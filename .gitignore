@@ -1,0 +1,8 @@
+*.a
+*.o
+exe/
+lib/
+tools/build_libsmm/generate
+
+!*.f90
+!*.F
