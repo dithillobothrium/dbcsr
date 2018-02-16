@@ -448,7 +448,7 @@
       TYPE(dbcsr_type), INTENT(IN)                            :: matrix_b
       TYPE(dbcsr_scalar_type), INTENT(IN)                     :: my_beta_scalar
       integer, intent(in)                                     :: first_lb_a, first_lb_b, nze, iw    
-      LOGICAL. intent(in)                                     :: found
+      LOGICAL, intent(in)                                     :: found, do_scale
       
       integer                                                 :: ub_a, ub_b
 
@@ -476,7 +476,7 @@
          ENDIF
       endif
      
-   end subroutine
+   end subroutine dbcsr_update_contiguous_blocks_${nametype1}$
 
 
 ! **************************************************************************************************
@@ -487,7 +487,7 @@
 ! **************************************************************************************************
 
    SUBROUTINE dbcsr_add_anytype_${nametype1}$(matrix_a, matrix_b, iter, iw, do_scale, &
-                                              my_beta_scalar, my_flop)s
+                                              my_beta_scalar, my_flop)
      TYPE(dbcsr_type), INTENT(INOUT)                         :: matrix_a
      TYPE(dbcsr_type), INTENT(IN)                            :: matrix_b
      TYPE(dbcsr_iterator), INTENT(INOUT)                     :: iter
@@ -496,10 +496,10 @@
      TYPE(dbcsr_scalar_type), INTENT(IN)                     :: my_beta_scalar
      INTEGER(KIND=int_8), INTENT(INOUT)                      :: my_flop
 
-     INTEGER                                                 :: row, col, row_size, col_size, &
-                                                                nze, tot_nze, blk, 
-                                                                lb_a, first_lb_a,
-                                                                lb_b, first_lb_b
+     INTEGER                                                 :: row, col, row_size, col_size
+     integer                                                 :: nze, tot_nze, blk, & 
+                                                                lb_a, first_lb_a, lb_a_val &
+                                                                lb_b, first_lb_b 
 
      INTEGER, DIMENSION(2)                                   :: lb_row_blk
      LOGICAL                                                 :: was_found, found, tr
@@ -537,7 +537,7 @@
         ! at the first iteration we skip this and go directly to initialization after
         if (first_lb_b .ne. 0) then        
            ! if found status is the same as before then probably we are in contiguous blocks
-           if (found .eq. was_found .and. &
+           if (found .eqv. was_found .and. &
                          first_lb_b + tot_nze .eq. lb_b .and. &
                          (first_lb_a + tot_nze) .eq. lb_a) then
               tot_nze = tot_nze + nze
@@ -554,10 +554,11 @@
         was_found = found        
      enddo
         
-        ! save the last block or chunk of blocks
-        if (first_lb_b .NE.0) &
-           call dbcsr_update_contiguous_blocks_${nametype1}$(matrix_a, matrix_b, first_lb_a, first_lb_b, tot_nze, &
-                                                             do_scale, my_beta_scalar, was_found, iw)
-       
+     ! save the last block or chunk of blocks
+     if (first_lb_b .NE. 0) then 
+        call dbcsr_update_contiguous_blocks_${nametype1}$(matrix_a, matrix_b, first_lb_a, first_lb_b, tot_nze, &
+                                                          do_scale, my_beta_scalar, was_found, iw)
+     endif
+
    END SUBROUTINE dbcsr_add_anytype_${nametype1}$
 #:endfor
