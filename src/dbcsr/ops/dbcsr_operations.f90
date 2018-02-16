@@ -498,17 +498,22 @@
 
      INTEGER                                                 :: row, col, row_size, col_size
      integer                                                 :: nze, tot_nze, blk, & 
-                                                                lb_a, first_lb_a, lb_a_val &
+                                                                lb_a, first_lb_a, lb_a_val, &
                                                                 lb_b, first_lb_b 
 
      INTEGER, DIMENSION(2)                                   :: lb_row_blk
      LOGICAL                                                 :: was_found, found, tr
     
-     
+    
+     !TODO fix my_flop
+     my_flop = 1
+      
+     ! some start values
      lb_row_blk(:) = 0
      first_lb_a = matrix_a%wms(iw)%datasize + 1
      first_lb_b = 0
      tot_nze = 0
+     
      DO WHILE (dbcsr_iterator_blocks_left(iter))
         CALL dbcsr_iterator_next_block(iter, row, col, blk, tr, lb_b, row_size, col_size)
         nze = row_size*col_size
