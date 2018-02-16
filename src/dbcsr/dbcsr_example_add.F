@@ -168,7 +168,7 @@ PROGRAM dbcsr_example_3
 
    !
    ! multiply the matrices
-   CALL dbcsr_add(matrix_a, matrix_b, 0.0_real_8, 1.0_real_8)
+   CALL dbcsr_add(matrix_a, matrix_b, 1.0_real_8, 1.0_real_8)
 
    !
    ! print the matrices

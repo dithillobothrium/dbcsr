@@ -2,7 +2,8 @@
 *.o
 exe/
 lib/
+obj/
+regtesting/
 tools/build_libsmm/generate
 
-!*.f90
-!*.F
+
