@@ -69,8 +69,8 @@ PROGRAM dbcsr_example_3
 
    !
    ! the matrix will contain nblkrows_total row blocks and nblkcols_total column blocks
-   nblkrows_total = 4
-   nblkcols_total = 4
+   nblkrows_total = 8
+   nblkcols_total = 8
 
    !
    ! set the block size for each row and column
@@ -120,6 +120,8 @@ PROGRAM dbcsr_example_3
    max_row_size = MAXVAL(row_blk_sizes)
    max_col_size = MAXVAL(col_blk_sizes)
    max_nze = max_row_size*max_col_size
+
+   call random_seed()
 
    !
    ! set up the a matrix

@@ -505,8 +505,6 @@
      LOGICAL                                                 :: was_found, found, tr
     
     
-     !TODO fix my_flop
-     my_flop = 1
       
      ! some start values
      lb_row_blk(:) = 0
@@ -528,6 +526,7 @@
         lb_row_blk(2) = blk+1
         ! get index of a-block lb_a whether found (from matrix_a) or not (from workspace array)
         if (found) then
+           my_flop = my_flop + nze * 2
            lb_a = ABS (matrix_a%blk_p(blk))
         else
            lb_a = matrix_a%wms(iw)%datasize + 1
