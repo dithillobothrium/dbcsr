@@ -466,7 +466,6 @@
                 matrix_b % data_area % d % ${base1}$_${prec1}$ (first_lb_b : ub_b)
          ENDIF
       else
-         write(*,*) 'cpy: ', first_lb_b, ub_b,  matrix_b % data_area % d % ${base1}$_${prec1}$ (first_lb_b : ub_b)
          IF (do_scale) THEN
            matrix_a % wms(iw) % data_area % d % ${base1}$_${prec1}$ (first_lb_a : ub_a) = &
                 my_beta_scalar % ${base1}$_${prec1}$ * &
