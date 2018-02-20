@@ -466,6 +466,7 @@
                 matrix_b % data_area % d % ${base1}$_${prec1}$ (first_lb_b : ub_b)
          ENDIF
       else
+         write(*,*) 'cpy: ', first_lb_b, ub_b,  matrix_b % data_area % d % ${base1}$_${prec1}$ (first_lb_b : ub_b)
          IF (do_scale) THEN
            matrix_a % wms(iw) % data_area % d % ${base1}$_${prec1}$ (first_lb_a : ub_a) = &
                 my_beta_scalar % ${base1}$_${prec1}$ * &
@@ -504,7 +505,7 @@
      INTEGER, DIMENSION(2)                                   :: lb_row_blk
      LOGICAL                                                 :: was_found, found, tr
     
-    
+     integer :: ii
       
      ! some start values
      lb_row_blk(:) = 0
@@ -512,6 +513,8 @@
      first_lb_b = 0
      tot_nze = 0
      
+     ii=0
+
      DO WHILE (dbcsr_iterator_blocks_left(iter))
         CALL dbcsr_iterator_next_block(iter, row, col, blk, tr, lb_b, row_size, col_size)
         nze = row_size*col_size
@@ -525,6 +528,7 @@
         CALL dbcsr_find_column(col, lb_row_blk(2), matrix_a%row_p(row+1), matrix_a%col_i, matrix_a%blk_p, blk, found)
         lb_row_blk(2) = blk+1
         ! get index of a-block lb_a whether found (from matrix_a) or not (from workspace array)
+        ii = ii + 1
         if (found) then
            my_flop = my_flop + nze * 2
            lb_a = ABS (matrix_a%blk_p(blk))
@@ -541,10 +545,10 @@
         ! at the first iteration we skip this and go directly to initialization after
         if (first_lb_b .ne. 0) then        
            ! if found status is the same as before then probably we are in contiguous blocks
-           if (found .eqv. was_found .and. &
-                         first_lb_b + tot_nze .eq. lb_b .and. &
+           if ((found .eqv. was_found) .and. &
+                         (first_lb_b + tot_nze .eq. lb_b) .and. &
                          (first_lb_a + tot_nze) .eq. lb_a) then
-              tot_nze = tot_nze + nze
+               tot_nze = tot_nze + nze
               cycle
           endif        
           ! save block chunk
