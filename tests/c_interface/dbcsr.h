@@ -27,6 +27,7 @@ extern "C" {
 
     void c_dbcsr_release(void** matrix);
 
+    void c_dbcsr_print(void* matrix);
 #ifdef __cplusplus
 }
 

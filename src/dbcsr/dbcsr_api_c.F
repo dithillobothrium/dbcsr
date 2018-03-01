@@ -148,4 +148,12 @@ module dbcsr_api_c
       end subroutine
 
 
+      subroutine c_dbcsr_print(c_matrix) bind(C, name="c_dbcsr_print") 
+        type(c_ptr), intent(in), value   :: c_matrix
+        type(dbcsr_type),  pointer          :: matrix
+
+        call c_f_pointer(c_matrix, matrix) 
+
+        call dbcsr_print(matrix)
+      end subroutine
 end module

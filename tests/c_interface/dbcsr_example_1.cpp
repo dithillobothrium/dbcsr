@@ -80,6 +80,8 @@ int main(int argc, char** argv)
     c_dbcsr_create_new_d(&matrix, (char*)"fish chips", dist, 'N', row_blk_sizes.data(), row_blk_sizes.size(),
                          col_blk_sizes.data(), col_blk_sizes.size());
 
+    c_dbcsr_print(matrix);
+
     c_dbcsr_release(&matrix);
     c_dbcsr_distribution_release(&dist);
     c_dbcsr_finalize_lib(group);
