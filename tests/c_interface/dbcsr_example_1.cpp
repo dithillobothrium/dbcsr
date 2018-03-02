@@ -3,8 +3,10 @@
 #include <cstdint>
 #include <vector>
 #include <iostream>
-
+#include <algorithm>
+#include <cstdlib>
 #include <stdio.h>
+#include <random>
 
 #include "dbcsr.h"
 
@@ -56,7 +58,7 @@ int main(int argc, char** argv)
 
     c_dbcsr_init_lib();
 
-
+/*
    // dbcsr::init_lib();
 
     int nblkrows_total = 4;
@@ -80,10 +82,36 @@ int main(int argc, char** argv)
     c_dbcsr_create_new_d(&matrix, (char*)"fish chips", dist, 'N', row_blk_sizes.data(), row_blk_sizes.size(),
                          col_blk_sizes.data(), col_blk_sizes.size());
 
+
+    int max_row_size = *std::max_element(row_blk_sizes.begin(),row_blk_sizes.end());
+    int max_col_size = *std::max_element(col_blk_sizes.begin(),col_blk_sizes.end());
+    int max_nze = max_row_size * max_col_size;
+
+    vector<double> block;
+    block.reserve(max_nze);
+
+    for(int i = 0; i < nblkrows_total; i++)
+    {
+        for(int j = 0; j < nblkcols_total; j++)
+        {
+            int blk_proc = -1;
+            c_dbcsr_get_stored_coordinates(matrix, i, j, &blk_proc);
+            
+            if(blk_proc == mpi_rank)
+            {
+                block.resize(row_blk_sizes[i] * col_blk_sizes[j]);
+                std::generate(block.begin(), block.end(), [&](){return (double)std::rand()/(double)RAND_MAX;});
+                c_dbcsr_put_block_d(matrix, i, j, block.data(), block.size());
+            }
+        }
+    }
+
+    c_dbcsr_finalize(matrix);
+    
     c_dbcsr_print(matrix);
 
     c_dbcsr_release(&matrix);
-    c_dbcsr_distribution_release(&dist);
+    c_dbcsr_distribution_release(&dist);*/
     c_dbcsr_finalize_lib(group);
     
     MPI_Comm_free(&group);

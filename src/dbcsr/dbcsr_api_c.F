@@ -37,19 +37,16 @@ module dbcsr_api_c
       end subroutine get_scalar_pointer
 
       subroutine c_dbcsr_init_lib() bind(C, name="c_dbcsr_init_lib")
-        print *,"init"
         call dbcsr_init_lib()
       end subroutine
 
       
       subroutine c_dbcsr_finalise_lib(fcomm) bind(C, name="c_dbcsr_finalize_lib_aux")
-        integer, intent(in), value :: fcomm
+        integer, intent(in) :: fcomm
         integer :: rank
         integer:: io_stream
-        io_stream = 0
-        print *,"finalize"
+        io_stream = 2
         call mpi_comm_rank(fcomm,rank)
-        print *,"rank ", rank
         if (rank .eq. 0) then
             io_stream = default_output_unit
         endif
@@ -91,7 +88,6 @@ module dbcsr_api_c
       subroutine test(c_name) bind(C, name="test")
         use, intrinsic :: iso_c_binding, only: c_ptr, c_f_pointer, c_char
         type(c_ptr), value, intent(in) :: c_name
-        print *, c_f_string(c_name)                           
       end subroutine
       
       
@@ -127,13 +123,23 @@ module dbcsr_api_c
         ! convert normal name to fortran name
         fname = c_f_string(c_name)
 
-        print *,fname
         call dbcsr_create(matrix = matrix, name = fname, dist = dist, &
                           matrix_type = c_matrix_type, row_blk_size = row_blk_sizes, &
                           col_blk_size = col_blk_sizes,  data_type=dbcsr_type_real_8)
 
         c_matrix = c_loc(matrix)
       end subroutine
+
+
+      subroutine c_dbcsr_finalize(c_matrix) bind(C, name="c_dbcsr_finalize")
+        type(c_ptr), intent(in), value   :: c_matrix
+        type(dbcsr_type),  pointer          :: matrix
+
+        call c_f_pointer(c_matrix, matrix) 
+
+        call dbcsr_finalize(matrix)
+      end subroutine
+
 
 
       subroutine c_dbcsr_release(c_matrix) bind(C, name="c_dbcsr_release")
@@ -155,5 +161,33 @@ module dbcsr_api_c
         call c_f_pointer(c_matrix, matrix) 
 
         call dbcsr_print(matrix)
+      end subroutine
+
+
+      subroutine c_dbcsr_get_stored_coordinates(c_matrix, row, col, processor) bind(C, name="c_dbcsr_get_stored_coordinates")
+        type(c_ptr), intent(in), value  :: c_matrix 
+        integer, intent(in), value      :: row, col
+        integer, intent(out)            :: processor
+
+        type(dbcsr_type),  pointer      :: matrix
+
+        call c_f_pointer(c_matrix, matrix)
+
+        call dbcsr_get_stored_coordinates(matrix, row + 1, col + 1, processor)
+      end subroutine
+
+
+      subroutine c_dbcsr_put_block_d(c_matrix, row, col, block, block_length) bind(C, name="c_dbcsr_put_block_d")
+        type(c_ptr), intent(in), value           :: c_matrix        
+        integer, intent(in), value               :: row, col, block_length      
+        real(8), intent(in)                      :: block(block_length)
+        !logical, intent(in), optional            :: summation 
+        !real(8), intent(in), optional            :: scale    
+        
+        type(dbcsr_type), pointer                :: matrix 
+
+        call c_f_pointer(c_matrix, matrix)
+
+        call dbcsr_put_block(matrix, row + 1, col + 1, block)
       end subroutine
 end module

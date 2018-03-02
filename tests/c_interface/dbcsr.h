@@ -8,11 +8,12 @@ extern "C" {
 #endif
     void c_dbcsr_init_lib();
     
-    void c_dbcsr_finalize_lib_aux(MPI_Fint fcomm);
+    void c_dbcsr_finalize_lib_aux(MPI_Fint* fcomm);
     
     void c_dbcsr_finalize_lib(MPI_Comm comm)
     {
-        c_dbcsr_finalize_lib_aux(MPI_Comm_c2f(comm));
+        MPI_Fint fcomm = MPI_Comm_c2f(comm);
+        c_dbcsr_finalize_lib_aux(&fcomm);
     }
   
     void c_dbcsr_distribution_new(void** dist, MPI_Fint fcomm, int* row_dist, int row_dist_size,
@@ -25,9 +26,16 @@ extern "C" {
     void c_dbcsr_create_new_d(void** matrix, char* name, void* dist, char matrix_type, int* row_blk_sizes,
                               int row_blk_sizes_length, int* col_blk_sizes, int col_blk_sizes_length);
 
+
+    void c_dbcsr_finalize(void* matrix);
+    
     void c_dbcsr_release(void** matrix);
 
     void c_dbcsr_print(void* matrix);
+
+    void c_dbcsr_get_stored_coordinates(void* matrix, int row, int col, int* processor);
+
+    void c_dbcsr_put_block_d(void* matrix, int row, int col, double* block, int block_length);
 #ifdef __cplusplus
 }
 
