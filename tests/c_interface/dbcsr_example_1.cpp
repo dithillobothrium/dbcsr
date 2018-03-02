@@ -58,7 +58,7 @@ int main(int argc, char** argv)
 
     c_dbcsr_init_lib();
 
-/*
+
    // dbcsr::init_lib();
 
     int nblkrows_total = 4;
@@ -111,7 +111,7 @@ int main(int argc, char** argv)
     c_dbcsr_print(matrix);
 
     c_dbcsr_release(&matrix);
-    c_dbcsr_distribution_release(&dist);*/
+    c_dbcsr_distribution_release(&dist);
     c_dbcsr_finalize_lib(group);
     
     MPI_Comm_free(&group);

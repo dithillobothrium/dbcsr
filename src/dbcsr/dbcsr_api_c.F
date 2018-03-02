@@ -45,7 +45,7 @@ module dbcsr_api_c
         integer, intent(in) :: fcomm
         integer :: rank
         integer:: io_stream
-        io_stream = 2
+        io_stream = 0
         call mpi_comm_rank(fcomm,rank)
         if (rank .eq. 0) then
             io_stream = default_output_unit
