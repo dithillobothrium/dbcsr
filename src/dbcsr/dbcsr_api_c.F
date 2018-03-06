@@ -192,4 +192,26 @@ module dbcsr_api_c
 
         call dbcsr_put_block(matrix, row + 1, col + 1, block)
       end subroutine
+
+
+      subroutine c_dbcsr_multiply_d(transa, transb, alpha, c_matrix_a, c_matrix_b, beta, c_matrix_c) &
+                    bind(C, name="c_dbcsr_multiply_d")
+        character, intent(in), value          :: transa, transb
+        real(8), intent(in), value            :: alpha
+        type(c_ptr), intent(in)               :: c_matrix_a, c_matrix_b
+        real(8), intent(in), value            :: beta
+        type(c_ptr), intent(inout)            :: c_matrix_c
+        !integer, intent(in), optional         :: first_row, last_row, &
+        !                                         first_column, last_column, &
+        !                                         first_k, last_k
+        !logical, intent(in), optional         :: retain_sparsity
+ 
+        type(dbcsr_type),  pointer      :: matrix_a, matrix_b, matrix_c
+
+        call c_f_pointer(c_matrix_a, matrix_a)
+        call c_f_pointer(c_matrix_b, matrix_b)
+        call c_f_pointer(c_matrix_c, matrix_c)
+
+        call dbcsr_multiply(transa, transb, alpha, matrix_a, matrix_b, beta, matrix_c)
+      end subroutine
 end module

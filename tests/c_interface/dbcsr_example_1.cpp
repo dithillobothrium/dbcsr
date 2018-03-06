@@ -79,45 +79,72 @@ int main(int argc, char** argv)
                              col_dist.data(), col_dist.size());
    
      
-    //MPI_Barrier(group);
-    
-    void* matrix = nullptr;
-
-    c_dbcsr_create_new_d(&matrix, (char*)"fish chips", dist, 'N', row_blk_sizes.data(), row_blk_sizes.size(),
-                         col_blk_sizes.data(), col_blk_sizes.size());
-
-
-    int max_row_size = *std::max_element(row_blk_sizes.begin(),row_blk_sizes.end());
-    int max_col_size = *std::max_element(col_blk_sizes.begin(),col_blk_sizes.end());
-    int max_nze = max_row_size * max_col_size;
-
-    vector<double> block;
-    block.reserve(max_nze);
-
-    for(int i = 0; i < nblkrows_total; i++)
+    auto fill_matrix = [&](void*& matrix)
     {
-        for(int j = 0; j < nblkcols_total; j++)
+        int max_row_size = *std::max_element(row_blk_sizes.begin(),row_blk_sizes.end());
+        int max_col_size = *std::max_element(col_blk_sizes.begin(),col_blk_sizes.end());
+        int max_nze = max_row_size * max_col_size;
+
+        vector<double> block;
+        block.reserve(max_nze);
+        
+        for(int i = 0; i < nblkrows_total; i++)
         {
-            int blk_proc = -1;
-            c_dbcsr_get_stored_coordinates(matrix, i, j, &blk_proc);
-            
-            if(blk_proc == mpi_rank)
+            for(int j = 0; j < nblkcols_total; j++)
             {
-                block.resize(row_blk_sizes[i] * col_blk_sizes[j]);
-                std::generate(block.begin(), block.end(), [&](){return (double)std::rand()/(double)RAND_MAX;});
-                c_dbcsr_put_block_d(matrix, i, j, block.data(), block.size());
+                int blk_proc = -1;
+                c_dbcsr_get_stored_coordinates(matrix, i, j, &blk_proc);
+                
+                if(blk_proc == mpi_rank)
+                {
+                    block.resize(row_blk_sizes[i] * col_blk_sizes[j]);
+                    std::generate(block.begin(), block.end(), [&](){return (double)std::rand()/(double)RAND_MAX;});
+                    c_dbcsr_put_block_d(matrix, i, j, block.data(), block.size());
+                }
             }
         }
-    }
+    };
+   
+    // create and fill matrix a 
+    void* matrix_a = nullptr;
+    c_dbcsr_create_new_d(&matrix_a, (char*)"matrix a", dist, 'N', row_blk_sizes.data(), row_blk_sizes.size(),
+                         col_blk_sizes.data(), col_blk_sizes.size());
 
-    c_dbcsr_finalize(matrix);
+    fill_matrix(matrix_a);
+    c_dbcsr_finalize(matrix_a);
+
+    // create and fill matrix b
+    void* matrix_b = nullptr;
+    c_dbcsr_create_new_d(&matrix_b, (char*)"matrix b", dist, 'N', row_blk_sizes.data(), row_blk_sizes.size(),
+                         col_blk_sizes.data(), col_blk_sizes.size());
     
-    c_dbcsr_print(matrix);
+    fill_matrix(matrix_b);
+    c_dbcsr_finalize(matrix_b);
 
-    c_dbcsr_release(&matrix);
+    // create matrix c 
+    void* matrix_c = nullptr;
+    c_dbcsr_create_new_d(&matrix_c, (char*)"matrix c", dist, 'N', row_blk_sizes.data(), row_blk_sizes.size(),
+                         col_blk_sizes.data(), col_blk_sizes.size());
+    
+    c_dbcsr_finalize(matrix_c);
+    
+    printf("------ print matrix a -------\n");
+    c_dbcsr_print(matrix_a);
+
+    printf("------ print matrix b -------\n");
+    c_dbcsr_print(matrix_b);
+
+    c_dbcsr_multiply_d('N', 'N', 1.0, &matrix_a, &matrix_b, 0.0, &matrix_c);
+
+    printf("------ print matrix c = a * b -------\n");
+    c_dbcsr_print(matrix_c);
+
+    c_dbcsr_release(&matrix_a);
+    c_dbcsr_release(&matrix_b);
+    c_dbcsr_release(&matrix_c);
+    
     c_dbcsr_distribution_release(&dist);
 
-    //MPI_Barrier(group);
     c_dbcsr_finalize_lib(group);
     
     MPI_Comm_free(&group);
