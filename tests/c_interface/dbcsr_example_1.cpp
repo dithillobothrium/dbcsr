@@ -54,7 +54,7 @@ int main(int argc, char** argv)
          << coord[0] << ", " << coord[1] 
          << ") in the 2D grid" << std::endl;
 
-    test((char*)"test pass string");
+//    test((char*)"test pass string");
 
     c_dbcsr_init_lib();
 
@@ -74,8 +74,12 @@ int main(int argc, char** argv)
 
     void* dist = nullptr;
 
-    c_dbcsr_distribution_new(&dist, MPI_Comm_c2f(group), row_dist.data(), row_dist.size(), 
+    MPI_Fint fgroup = MPI_Comm_c2f(group);
+    c_dbcsr_distribution_new(&dist, &fgroup, row_dist.data(), row_dist.size(), 
                              col_dist.data(), col_dist.size());
+   
+     
+    //MPI_Barrier(group);
     
     void* matrix = nullptr;
 
@@ -112,6 +116,8 @@ int main(int argc, char** argv)
 
     c_dbcsr_release(&matrix);
     c_dbcsr_distribution_release(&dist);
+
+    //MPI_Barrier(group);
     c_dbcsr_finalize_lib(group);
     
     MPI_Comm_free(&group);

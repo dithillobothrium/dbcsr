@@ -8,11 +8,13 @@ module dbcsr_api_c
    
    contains
 
-      function c_f_string(c_str) result(f_str)
+
+      function c_f_string(c_str) result(str)
         use, intrinsic :: iso_c_binding, only: c_ptr, c_f_pointer, c_char
         type(c_ptr), intent(in) :: c_str
-        character(:,kind=c_char), pointer :: f_str
         character(kind=c_char), pointer :: arr(:)
+        character(:), allocatable :: str
+        integer :: n
         interface
           ! steal std c library function rather than writing our own.
           function strlen(s) bind(c, name='strlen')
@@ -23,18 +25,13 @@ module dbcsr_api_c
             integer(c_size_t) :: strlen
           end function strlen
         end interface
+        n = strlen(c_str)
         !****
-        call c_f_pointer(c_str, arr, [strlen(c_str)])
-        call get_scalar_pointer(size(arr), arr, f_str)
+        call c_f_pointer(c_str, arr, [n])
+        allocate(character(len=n) :: str)
+        str = transfer(arr(1:n),str)
       end function c_f_string
-      subroutine get_scalar_pointer(scalar_len, scalar, ptr)
-        use, intrinsic :: iso_c_binding, only: c_char
-        integer, intent(in) :: scalar_len
-        character(kind=c_char,len=scalar_len), intent(in), target :: scalar(1)
-        character(:,kind=c_char), intent(out), pointer :: ptr
-        !***
-        ptr => scalar(1)
-      end subroutine get_scalar_pointer
+      
 
       subroutine c_dbcsr_init_lib() bind(C, name="c_dbcsr_init_lib")
         call dbcsr_init_lib()
@@ -43,10 +40,10 @@ module dbcsr_api_c
       
       subroutine c_dbcsr_finalise_lib(fcomm) bind(C, name="c_dbcsr_finalize_lib_aux")
         integer, intent(in) :: fcomm
-        integer :: rank
         integer:: io_stream
+        integer:: ierr, rank
+        call mpi_comm_rank(fcomm,rank,ierr)
         io_stream = 0
-        call mpi_comm_rank(fcomm,rank)
         if (rank .eq. 0) then
             io_stream = default_output_unit
         endif
@@ -54,20 +51,22 @@ module dbcsr_api_c
       end subroutine
 
       
-      subroutine c_dbcsr_distribution_new(c_dist, group, c_row_dist, row_dist_size, &
+      subroutine c_dbcsr_distribution_new(c_dist, fcomm, c_row_dist, row_dist_size, &
                                     c_col_dist, col_dist_size) &
                                     bind(C, name="c_dbcsr_distribution_new")
         type(c_ptr), intent(out)                :: c_dist
-        integer, intent(in), value              :: group
+        integer, intent(in)                     :: fcomm
         integer, intent(in), value              :: row_dist_size, col_dist_size
         integer, intent(in), target             :: c_row_dist(row_dist_size), c_col_dist(col_dist_size)
         type(dbcsr_distribution_type), pointer  :: dist
         integer, pointer                        :: row_dist(:), col_dist(:)
         
+        integer:: ierr, rank
+        call mpi_comm_rank(fcomm,rank,ierr)
         row_dist => c_row_dist
         col_dist => c_col_dist
         allocate(dist)
-        call dbcsr_distribution_new(dist, group=group, row_dist=row_dist, &
+        call dbcsr_distribution_new(dist, group=fcomm, row_dist=row_dist, &
                                     col_dist=col_dist, reuse_arrays=.false.)
         c_dist = c_loc(dist)
       end subroutine
@@ -76,10 +75,11 @@ module dbcsr_api_c
       subroutine c_dbcsr_distribution_release(c_dist) bind(C, name="c_dbcsr_distribution_release")
         type(c_ptr), intent(inout)      :: c_dist
         type(dbcsr_distribution_type),  pointer          :: dist
-
         call c_f_pointer(c_dist, dist) 
 
         call dbcsr_distribution_release(dist)
+
+        deallocate(dist)
 
         c_dist = c_null_ptr
       end subroutine
@@ -108,8 +108,8 @@ module dbcsr_api_c
         integer, pointer                        :: row_blk_sizes(:), col_blk_sizes(:) 
         !character(len=*),pointer                :: fname
 
-        character(:,kind=c_char), pointer :: fname
-        
+        character(:,kind=c_char), allocatable :: fname
+       
         ! associate pointers
         row_blk_sizes => c_row_blk_sizes
         col_blk_sizes => c_col_blk_sizes
@@ -122,8 +122,8 @@ module dbcsr_api_c
 
         ! convert normal name to fortran name
         fname = c_f_string(c_name)
-
-        call dbcsr_create(matrix = matrix, name = fname, dist = dist, &
+ 
+        call dbcsr_create(matrix = matrix, name = "matrix", dist = dist, &
                           matrix_type = c_matrix_type, row_blk_size = row_blk_sizes, &
                           col_blk_size = col_blk_sizes,  data_type=dbcsr_type_real_8)
 
@@ -149,6 +149,8 @@ module dbcsr_api_c
         call c_f_pointer(c_matrix, matrix) 
 
         call dbcsr_release(matrix)
+
+        deallocate(matrix)
 
         c_matrix = c_null_ptr
       end subroutine

@@ -16,7 +16,7 @@ extern "C" {
         c_dbcsr_finalize_lib_aux(&fcomm);
     }
   
-    void c_dbcsr_distribution_new(void** dist, MPI_Fint fcomm, int* row_dist, int row_dist_size,
+    void c_dbcsr_distribution_new(void** dist, MPI_Fint* fcomm, int* row_dist, int row_dist_size,
                                   int* col_dist, int col_dist_size);
 
     void c_dbcsr_distribution_release(void** dist);
@@ -39,11 +39,12 @@ extern "C" {
 #ifdef __cplusplus
 }
 
+/*
 namespace dbcsr {
   constexpr auto init_lib = c_dbcsr_init_lib;
   constexpr auto finalize_lib = c_dbcsr_finalize_lib;
 }
-
+*/
 #endif
 
 
