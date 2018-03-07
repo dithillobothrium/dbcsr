@@ -38,7 +38,7 @@ extern "C" {
     void c_dbcsr_put_block_d(void* matrix, int row, int col, double* block, int block_length);
 
     void c_dbcsr_multiply_d(char transa, char transb, double alpha, void** c_matrix_a, void** c_matrix_b,
-                            double beta, void** c_matrix_c);
+                            double beta, void** c_matrix_c, bool* retain_sparsity);
 #ifdef __cplusplus
 }
 

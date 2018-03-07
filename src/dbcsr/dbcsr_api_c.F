@@ -1,5 +1,5 @@
 module dbcsr_api_c
-   use, intrinsic :: ISO_C_BINDING, only : c_loc, c_ptr, c_double, c_f_pointer, c_int, c_char, c_null_ptr
+   use, intrinsic :: ISO_C_BINDING, only : c_loc, c_ptr, c_double, c_f_pointer, c_int, c_char, c_null_ptr, c_bool
    USE dbcsr_api
    USE machine,                         ONLY: default_output_unit
    
@@ -194,7 +194,7 @@ module dbcsr_api_c
       end subroutine
 
 
-      subroutine c_dbcsr_multiply_d(transa, transb, alpha, c_matrix_a, c_matrix_b, beta, c_matrix_c) &
+      subroutine c_dbcsr_multiply_d(transa, transb, alpha, c_matrix_a, c_matrix_b, beta, c_matrix_c, retain_sparsity) &
                     bind(C, name="c_dbcsr_multiply_d")
         character, intent(in), value          :: transa, transb
         real(8), intent(in), value            :: alpha
@@ -204,14 +204,19 @@ module dbcsr_api_c
         !integer, intent(in), optional         :: first_row, last_row, &
         !                                         first_column, last_column, &
         !                                         first_k, last_k
-        !logical, intent(in), optional         :: retain_sparsity
- 
+        logical(c_bool), intent(in), optional         :: retain_sparsity
+        logical :: ret_sp
         type(dbcsr_type),  pointer      :: matrix_a, matrix_b, matrix_c
-
+        
         call c_f_pointer(c_matrix_a, matrix_a)
         call c_f_pointer(c_matrix_b, matrix_b)
         call c_f_pointer(c_matrix_c, matrix_c)
 
-        call dbcsr_multiply(transa, transb, alpha, matrix_a, matrix_b, beta, matrix_c)
+        if (present(retain_sparsity) ) then
+            ret_sp = retain_sparsity 
+            call dbcsr_multiply(transa, transb, alpha, matrix_a, matrix_b, beta, matrix_c, retain_sparsity = ret_sp)
+        else
+            call dbcsr_multiply(transa, transb, alpha, matrix_a, matrix_b, beta, matrix_c)
+        endif
       end subroutine
 end module

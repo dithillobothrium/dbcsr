@@ -134,7 +134,8 @@ int main(int argc, char** argv)
     printf("------ print matrix b -------\n");
     c_dbcsr_print(matrix_b);
 
-    c_dbcsr_multiply_d('N', 'N', 1.0, &matrix_a, &matrix_b, 0.0, &matrix_c);
+    bool ret_spars = true;
+    c_dbcsr_multiply_d('N', 'N', 1.0, &matrix_a, &matrix_b, 0.0, &matrix_c, nullptr);
 
     printf("------ print matrix c = a * b -------\n");
     c_dbcsr_print(matrix_c);
