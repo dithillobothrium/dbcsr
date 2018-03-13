@@ -4,11 +4,13 @@ FC         = mpif90
 LD         = mpif90
 AR         = ar -r
 CPPFLAGS   =
-DFLAGS     = -D__parallel
+DFLAGS     = -D__parallel -D__SCALAPACK 
 CFLAGS     = $(DFLAGS) -O2
 FCDEBFLAGS = -ffree-form -std=f2008ts -fimplicit-none
 FCFLAGS    = $(DFLAGS) -g -fno-omit-frame-pointer -O3 \
 	     -funroll-loops -ffast-math -fopenmp $(FCDEBFLAGS) \
 	     $(DFLAGS)
 LDFLAGS    = $(FCFLAGS)
-LIBS      += -L${SCALAPACK_PATH}/lib -lscalapack -lreflapack -lrefblas
+LIBS      += -L${SCALAPACK_PATH}/lib -lscalapack -llapack -lblas -lstdc++  -lrt -lmpi -lmpicxx 
+
+

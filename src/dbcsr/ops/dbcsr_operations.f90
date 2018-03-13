@@ -12,7 +12,7 @@
 !>
 ! **************************************************************************************************
   SUBROUTINE dbcsr_trace_a_${nametype1}$(matrix_a, trace)
-    TYPE(dbcsr_type), INTENT(INOUT)           :: matrix_a
+    TYPE(dbcsr_type), INTENT(IN)               :: matrix_a
     ${type1}$, INTENT(INOUT)                   :: trace
 
     CHARACTER(len=*), PARAMETER :: routineN = 'dbcsr_trace_a_${nametype1}$', &
@@ -82,7 +82,7 @@
 !> \param[out] trace             the trace of the product of the matrices
 ! **************************************************************************************************
   SUBROUTINE dbcsr_trace_ab_${nametype1}$(matrix_a, matrix_b, trace)
-    TYPE(dbcsr_type), INTENT(INOUT)           :: matrix_a, matrix_b
+    TYPE(dbcsr_type), INTENT(IN)               :: matrix_a, matrix_b
     ${type1}$, INTENT(INOUT)                   :: trace
 
     CHARACTER(len=*), PARAMETER :: routineN = 'dbcsr_trace_ab_${nametype1}$', &
@@ -439,23 +439,29 @@
 !> \brief  Low level function to sum contiguous chunks of blocks of the matrices (matrix_a = matrix_a + beta*matrix_b)
 !> \param[inout] matrix_a       DBCSR matrix
 !> \param[in]    matrix_b       DBCSR matrix
-!> \param[in]    beta scalar
+!> \param[in]    first_lb_a     ...
+!> \param[in]    first_lb_b     ...
+!> \param[in]    nze            ...
+!> \param[in]    do_scale       ...
+!> \param[in]    my_beta_scalar ...
+!> \param[in]    found          ...
+!> \param[in]    iw             ...
 ! **************************************************************************************************
-   subroutine dbcsr_update_contiguous_blocks_${nametype1}$(matrix_a, matrix_b, first_lb_a, first_lb_b, nze, &
+   SUBROUTINE dbcsr_update_contiguous_blocks_${nametype1}$(matrix_a, matrix_b, first_lb_a, first_lb_b, nze, &
                                                            do_scale, my_beta_scalar, found, iw)
       
       TYPE(dbcsr_type), INTENT(INOUT)                         :: matrix_a
       TYPE(dbcsr_type), INTENT(IN)                            :: matrix_b
       TYPE(dbcsr_scalar_type), INTENT(IN)                     :: my_beta_scalar
-      integer, intent(in)                                     :: first_lb_a, first_lb_b, nze, iw    
-      LOGICAL, intent(in)                                     :: found, do_scale
+      INTEGER, INTENT(IN)                                     :: first_lb_a, first_lb_b, nze, iw    
+      LOGICAL, INTENT(IN)                                     :: found, do_scale
       
-      integer                                                 :: ub_a, ub_b
+      INTEGER                                                 :: ub_a, ub_b
 
       ub_a = first_lb_a + nze - 1
       ub_b = first_lb_b + nze - 1
 
-      if (found) then
+      IF (found) THEN
          IF (do_scale) THEN
            CALL ${nametype1}$axpy (nze, my_beta_scalar % ${base1}$_${prec1}$,  &
                        matrix_b % data_area % d % ${base1}$_${prec1}$ (first_lb_b : ub_b), 1, &
@@ -465,7 +471,7 @@
                 matrix_a % data_area % d % ${base1}$_${prec1}$ (first_lb_a : ub_a) + &
                 matrix_b % data_area % d % ${base1}$_${prec1}$ (first_lb_b : ub_b)
          ENDIF
-      else
+      ELSE
          IF (do_scale) THEN
            matrix_a % wms(iw) % data_area % d % ${base1}$_${prec1}$ (first_lb_a : ub_a) = &
                 my_beta_scalar % ${base1}$_${prec1}$ * &
@@ -474,16 +480,19 @@
            matrix_a % wms(iw) % data_area % d % ${base1}$_${prec1}$ (first_lb_a : ub_a) = &
                 matrix_b % data_area % d % ${base1}$_${prec1}$ (first_lb_b : ub_b)
          ENDIF
-      endif
-     
-   end subroutine dbcsr_update_contiguous_blocks_${nametype1}$
+      ENDIF
+   END SUBROUTINE dbcsr_update_contiguous_blocks_${nametype1}$
 
 
 ! **************************************************************************************************
 !> \brief Low level function to sum two matrices (matrix_a = matrix_a + beta*matrix_b
 !> \param[inout] matrix_a       DBCSR matrix
 !> \param[in]    matrix_b       DBCSR matrix
-!> \param[in]    beta scalar
+!> \param[in]    iter           ...
+!> \param[in]    iw             ...
+!> \param[in]    do_scale       ...
+!> \param[in]    my_beta_scalar ...
+!> \param[inout] my_flop ...
 ! **************************************************************************************************
 
    SUBROUTINE dbcsr_add_anytype_${nametype1}$(matrix_a, matrix_b, iter, iw, do_scale, &
@@ -496,24 +505,19 @@
      TYPE(dbcsr_scalar_type), INTENT(IN)                     :: my_beta_scalar
      INTEGER(KIND=int_8), INTENT(INOUT)                      :: my_flop
 
-     INTEGER                                                 :: row, col, row_size, col_size
-     integer                                                 :: nze, tot_nze, blk, & 
+     INTEGER                                                 :: row, col, row_size, col_size, &
+                                                                nze, tot_nze, blk, & 
                                                                 lb_a, first_lb_a, lb_a_val, &
                                                                 lb_b, first_lb_b 
-
      INTEGER, DIMENSION(2)                                   :: lb_row_blk
      LOGICAL                                                 :: was_found, found, tr
     
-     integer :: ii
-      
      ! some start values
      lb_row_blk(:) = 0
      first_lb_a = matrix_a%wms(iw)%datasize + 1
      first_lb_b = 0
      tot_nze = 0
-     
-     ii=0
-
+     !
      DO WHILE (dbcsr_iterator_blocks_left(iter))
         CALL dbcsr_iterator_next_block(iter, row, col, blk, tr, lb_b, row_size, col_size)
         nze = row_size*col_size
@@ -527,11 +531,10 @@
         CALL dbcsr_find_column(col, lb_row_blk(2), matrix_a%row_p(row+1), matrix_a%col_i, matrix_a%blk_p, blk, found)
         lb_row_blk(2) = blk+1
         ! get index of a-block lb_a whether found (from matrix_a) or not (from workspace array)
-        ii = ii + 1
-        if (found) then
+        IF (found) THEN
            my_flop = my_flop + nze * 2
            lb_a = ABS (matrix_a%blk_p(blk))
-        else
+        ELSE
            lb_a = matrix_a%wms(iw)%datasize + 1
            lb_a_val = lb_a
            IF (tr) lb_a_val = -lb_a
@@ -540,32 +543,32 @@
            matrix_a%wms(iw)%col_i(matrix_a%wms(iw)%lastblk) = col
            matrix_a%wms(iw)%blk_p(matrix_a%wms(iw)%lastblk) = lb_a_val
            matrix_a%wms(iw)%datasize = matrix_a%wms(iw)%datasize + nze
-        endif
+        ENDIF
         ! at the first iteration we skip this and go directly to initialization after
-        if (first_lb_b .ne. 0) then        
+        IF (first_lb_b .NE. 0) THEN        
            ! if found status is the same as before then probably we are in contiguous blocks
-           if ((found .eqv. was_found) .and. &
-                         (first_lb_b + tot_nze .eq. lb_b) .and. &
-                         (first_lb_a + tot_nze) .eq. lb_a) then
-               tot_nze = tot_nze + nze
-              cycle
-          endif        
+           IF ((found .EQV. was_found) .AND. &
+               (first_lb_b + tot_nze .EQ. lb_b) .AND. &
+               (first_lb_a + tot_nze) .EQ. lb_a) THEN
+              tot_nze = tot_nze + nze
+              CYCLE
+          ENDIF
           ! save block chunk
-          call dbcsr_update_contiguous_blocks_${nametype1}$(matrix_a, matrix_b, first_lb_a, first_lb_b, tot_nze, &
+          CALL dbcsr_update_contiguous_blocks_${nametype1}$(matrix_a, matrix_b, first_lb_a, first_lb_b, tot_nze, &
                                                            do_scale, my_beta_scalar, was_found, iw)
-        endif
-        
+        ENDIF
+        !
         first_lb_a = lb_a
         first_lb_b = lb_b
         tot_nze = nze
         was_found = found        
-     enddo
+     ENDDO
         
      ! save the last block or chunk of blocks
-     if (first_lb_b .NE. 0) then 
+     IF (first_lb_b .NE. 0) THEN 
         call dbcsr_update_contiguous_blocks_${nametype1}$(matrix_a, matrix_b, first_lb_a, first_lb_b, tot_nze, &
                                                           do_scale, my_beta_scalar, was_found, iw)
-     endif
+     ENDIF
 
    END SUBROUTINE dbcsr_add_anytype_${nametype1}$
 #:endfor
