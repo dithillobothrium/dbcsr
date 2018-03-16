@@ -1087,12 +1087,6 @@ CONTAINS
             CPABORT("Incompatible data types")
       ENDIF
 
-      IF (acc_devmem_allocated(area%d%acc_devmem)) THEN
-         IF (PRESENT(value)) &
-            CPABORT("dbcsr_data_clear0 with value not implemented for acc_devmem")
-         s = dbcsr_datatype_sizeof(area%d%data_type)
-         CALL acc_devmem_setzero_bytes(area%d%acc_devmem, s*lb, s*ub, area%d%memory_type%acc_stream)
-      END IF
 
       SELECT CASE (area%d%data_type)
       CASE (dbcsr_type_real_4)
@@ -1267,6 +1261,12 @@ CONTAINS
          CPABORT("Invalid or unsupported data type.")
       END SELECT
 
+      IF (acc_devmem_allocated(area%d%acc_devmem)) THEN
+         IF (PRESENT(value)) &
+            CPABORT("dbcsr_data_clear0 with value not implemented for acc_devmem")
+         s = dbcsr_datatype_sizeof(area%d%data_type)
+         CALL acc_devmem_setzero_bytes(area%d%acc_devmem, s*l, s*u, area%d%memory_type%acc_stream)
+      END IF
       ! CALL timestop(handle)
 
    END SUBROUTINE dbcsr_data_clear0
