@@ -6,4 +6,11 @@ obj/
 regtesting/
 tools/build_libsmm/generate
 
+src/dbcsr/libsmm_acc/libcusmm/kernels/__init__.pyc
+src/dbcsr/libsmm_acc/libcusmm/kernels/cusmm_dnt_largeDB1.pyc
+src/dbcsr/libsmm_acc/libcusmm/kernels/cusmm_dnt_largeDB2.pyc
+src/dbcsr/libsmm_acc/libcusmm/kernels/cusmm_dnt_medium.pyc
+src/dbcsr/libsmm_acc/libcusmm/kernels/cusmm_dnt_small.pyc
+src/dbcsr/libsmm_acc/libcusmm/kernels/cusmm_dnt_tiny.pyc
+
 
