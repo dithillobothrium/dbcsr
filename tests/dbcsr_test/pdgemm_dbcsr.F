@@ -10,7 +10,7 @@
 program matrix_matrix_multiply
   USE machine,                         ONLY: m_walltime,&
                                              default_output_unit
-  USE dbcsr_api,                       ONLY: dbcsr_type,&
+  USE dbcsr_api,                       ONLY: dbcsr_type_loc => dbcsr_type,&
                                              dbcsr_distribution_type,&
                                              dbcsr_distribution_new,&
                                              dbcsr_type_no_symmetry,&
@@ -41,11 +41,13 @@ program matrix_matrix_multiply
                                              mp_max
   USE kinds,                           ONLY: dp
 
+  use carma, only: carma_mm
+  
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
 
   implicit none
 
-  integer                             :: n, nb    ! problem size and block size
+  integer                             :: k, n, nb    ! problem size and block size
   integer                             :: myrows, mycols   ! size of local subset of global array
   integer                             :: i,j, igrid,jgrid, iproc,jproc, myi,myj, p
   REAL(kind=dp), dimension(:,:), allocatable :: myA, myB, myC_blacs, myC_dbcsr
@@ -60,12 +62,14 @@ program matrix_matrix_multiply
   INTEGER, DIMENSION(2)               :: coord, npdims, myploc ! MPI dimensions
   INTEGER                             :: mp_comm, mynode, numnodes, group ! MPI variables
   INTEGER                             :: io_unit, nthreads
-  TYPE(dbcsr_type)                    :: matA_dbcsr, matB_dbcsr, matC_dbcsr
+  TYPE(dbcsr_type_loc)                    :: matA_dbcsr, matB_dbcsr, matC_dbcsr, matC_carma
   REAL(kind=dp)                       :: diff_val, min_val, max_val, sum_val
 
   INTEGER                             :: index, comm_thread_load
 
   LOGICAL, PARAMETER :: verbose=.FALSE.
+  character(len=32) :: cdimx, cdimy
+  
 
   CALL dbcsr_set_config(mm_stack_size=2000)
 
@@ -74,11 +78,27 @@ program matrix_matrix_multiply
   CALL mp_world_init(mp_comm)
   !
   ! setup the mp enviroment
+
   npdims(:) = 0
+
+  if (command_argument_count() >=2) then
+    call get_command_argument(1, cdimx)
+    call get_command_argument(2, cdimy)
+    read(cdimx,*) npdims(1)
+    read(cdimy,*) npdims(2)
+  endif
+  
+  
   CALL mp_cart_create(mp_comm, 2, npdims, myploc, group)
   CALL mp_environ(numnodes, mynode, group)
+  
+
   prow = npdims(1)
   pcol = npdims(2)
+ 
+
+  print *,"prow pcol", prow, pcol
+  
   IF (mynode .EQ. 0) THEN
      nthreads = 1
 !$OMP PARALLEL SHARED(nthreads)
@@ -103,6 +123,7 @@ program matrix_matrix_multiply
   ! Read problem description
   open(unit=1,file="ABCp.dat",status="old",form="formatted")
   read(1,*) n
+  read(1,*) k
   read(1,*) nb
   close(1)
   !
@@ -126,7 +147,7 @@ program matrix_matrix_multiply
   !                    matrix B of n rows and n column
   !                    matrix C of n rows and n column
   myrows = numroc(n, nb, myrow, 0, prow)
-  mycols = numroc(n, nb, mycol, 0, pcol)
+  mycols = numroc(k, nb, mycol, 0, pcol)
   if (verbose) then
      print *, "Size of global array is ",n," x ",n
      print *, "Size of block is        ",nb," x ",nb
@@ -135,19 +156,19 @@ program matrix_matrix_multiply
   !
   ! Initialize local arrays    
   allocate(myA(myrows,mycols)) 
-  allocate(myB(myrows,mycols)) 
-  allocate(myC_blacs(myrows,mycols)) 
-  allocate(myC_dbcsr(myrows,mycols)) 
+  allocate(myB(mycols,myrows)) 
+  allocate(myC_blacs(myrows,myrows)) 
+  allocate(myC_dbcsr(myrows,myrows)) 
+  myC_blacs = 0
+  myC_dbcsr = 0
   do i=1,n
      call g2l(i,n,prow,nb,iproc,myi)
      if (myrow==iproc) then
-        do j=1,n
-           call g2l(j,n,pcol,nb,jproc,myj)
+        do j=1,k
+           call g2l(j,k,pcol,nb,jproc,myj)
            if (mycol==jproc) then
               myA(myi,myj) = real(i+j)/real(n)
-              myB(myi,myj) = real(i-j)/real(n)
-              myC_blacs(myi,myj) = 0.d0
-              myC_dbcsr(myi,myj) = 0.d0
+              myB(myj,myi) = real(i-j)/real(n)
            endif
         enddo
      endif
@@ -157,7 +178,7 @@ program matrix_matrix_multiply
   ides_a(1) = 1         ! descriptor type
   ides_a(2) = icontxt   ! blacs context
   ides_a(3) = n         ! global number of rows
-  ides_a(4) = n         ! global number of columns
+  ides_a(4) = k         ! global number of columns
   ides_a(5) = nb        ! row block size
   ides_a(6) = nb        ! column block size
   ides_a(7) = 0         ! initial process row
@@ -168,15 +189,21 @@ program matrix_matrix_multiply
      ides_b(i) = ides_a(i)
      ides_c(i) = ides_a(i)
   enddo
+  ides_b(3) = k
+  ides_b(4) = n
+  ides_b(9) = mycols
+  ides_c(3) = n
+  ides_c(4) = n
+  ides_c(9) = myrows
   !
   ! Call ScaLAPACK library routine
   !
   ! Perform multiply
   CALL mp_sync(group)
   t1 = m_walltime()
-  call pdgemm('N','N', n, n, n, 1.0d0, myA, 1, 1, ides_a, &
-              myB, 1, 1, ides_b, 0.0d0, &
-              myC_blacs, 1, 1, ides_c)
+  !call pdgemm('N','N', n, n, k, 1.0d0, myA, 1, 1, ides_a, &
+  !            myB, 1, 1, ides_b, 0.0d0, &
+  !            myC_blacs, 1, 1, ides_c)
   CALL mp_sync(group)
   t2 = m_walltime()
   !
@@ -200,10 +227,14 @@ program matrix_matrix_multiply
   !
   CALL mp_sync(group)
   t1 = m_walltime()
-  CALL copy_blacs_to_dbcsr_bc(myA, nb, nb, n, n, &
+  print *,"test321 myA"
+
+  CALL copy_blacs_to_dbcsr_bc(myA, nb, nb, n, k, &
                               group, pgrid, matA_dbcsr)
-  CALL copy_blacs_to_dbcsr_bc(myB, nb, nb, n, n, &
+  print *,"test321 myB"
+  CALL copy_blacs_to_dbcsr_bc(myB, nb, nb, k, n, &
                               group, pgrid, matB_dbcsr)
+  print *,"test321 myC"
   CALL copy_blacs_to_dbcsr_bc(myC_dbcsr, nb, nb, n, n, &
                               group, pgrid, matC_dbcsr)
   CALL mp_sync(group)
@@ -218,6 +249,7 @@ program matrix_matrix_multiply
   ! multiply the matrices
   CALL mp_sync(group)
   t1 = m_walltime()
+   print *,"test321 CALL dbcsr_multiply('N', 'N', 1.0d0, matA_dbcsr, matB_dbcsr, 0.0d0, matC_dbcsr)"
   CALL dbcsr_multiply('N', 'N', 1.0d0, matA_dbcsr, matB_dbcsr, 0.0d0, matC_dbcsr)
   CALL mp_sync(group)
   t2 = m_walltime()
@@ -227,11 +259,25 @@ program matrix_matrix_multiply
   if (mynode .EQ. 0) then
      print *, "Multiply DBCSR time (s) =", t2-t1
   endif
+
+
+
+
+
+
+   call carma_mm(matA_dbcsr%prv, matB_dbcsr%prv, matC_dbcsr%prv)
+
+
+
+
+
+
   !
   ! Convert DBCSR to BLACS matrix
   !
   CALL mp_sync(group)
   t1 = m_walltime()
+  print *,"test321 copy_dbcsr_to_blacs_bc(matC_dbcsr, myC_dbcsr)"
   CALL copy_dbcsr_to_blacs_bc(matC_dbcsr, myC_dbcsr)
   ! release the matrices
   CALL dbcsr_release(matA_dbcsr)
@@ -266,6 +312,8 @@ program matrix_matrix_multiply
      ENDIF
      print *, "Max Diff = ", diff_val
   endif
+  !call print_matrix(myC_blacs)
+  !call print_matrix(myC_dbcsr)
   !
   ! finalize libdbcsr
   io_unit = 0
@@ -287,6 +335,9 @@ program matrix_matrix_multiply
   CALL mp_world_finalize()
 
 contains
+  
+  
+  
   !
   ! convert global index to local index in block-cyclic distribution
   !
@@ -335,7 +386,7 @@ contains
   end subroutine print_matrix
 
   subroutine print_matrix_dbcsr(matrix_dbcsr, lda)
-    TYPE(dbcsr_type), INTENT(IN) :: matrix_dbcsr
+    TYPE(dbcsr_type_loc), INTENT(IN) :: matrix_dbcsr
     INTEGER, INTENT(IN)          :: lda
     
     REAL(kind=dp), DIMENSION(:), POINTER       :: data_dbcsr
@@ -357,7 +408,7 @@ contains
     REAL(kind=dp), dimension(:,:), allocatable :: fm ! full matrix
     INTEGER, INTENT(IN)                 :: nrow_block, ncol_block, nrow_global, ncol_global, group
     INTEGER, DIMENSION(:, :), POINTER   :: pgrid    
-    TYPE(dbcsr_type), INTENT(INOUT)     :: bc_mat
+    TYPE(dbcsr_type_loc), INTENT(INOUT)     :: bc_mat
  
     INTEGER                             :: col, row
     INTEGER, ALLOCATABLE, DIMENSION(:)  :: first_col, first_row, last_col, last_row
@@ -400,7 +451,7 @@ contains
   ! Copy a DBCSR_BLACS matrix to a BLACS matrix
   !
   SUBROUTINE copy_dbcsr_to_blacs_bc(bc_mat, fm)
-    TYPE(dbcsr_type), INTENT(IN)                    :: bc_mat
+    TYPE(dbcsr_type_loc), INTENT(IN)                    :: bc_mat
     REAL(kind=dp), DIMENSION(:, :), ALLOCATABLE            :: fm
 
     INTEGER :: col, handle, row
@@ -487,7 +538,7 @@ contains
   ! Helper routine used to copy blocks from DBCSR into FM matrices and vice versa
   !
   SUBROUTINE calculate_fm_block_ranges(bc_mat, first_row, last_row, first_col, last_col)
-    TYPE(dbcsr_type), INTENT(IN)                    :: bc_mat
+    TYPE(dbcsr_type_loc), INTENT(IN)                    :: bc_mat
     INTEGER :: col, nblkcols_local, nblkcols_total, nblkrows_local, nblkrows_total, row
     INTEGER, ALLOCATABLE, DIMENSION(:)                 :: first_col, first_row, last_col, &
          last_row, local_col_sizes, &

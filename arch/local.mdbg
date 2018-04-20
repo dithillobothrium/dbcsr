@@ -11,6 +11,6 @@ FCFLAGS    = $(DFLAGS) -g -fno-omit-frame-pointer -O3 \
 	     -funroll-loops -ffast-math -fopenmp $(FCDEBFLAGS) \
 	     $(DFLAGS)
 LDFLAGS    = $(FCFLAGS)
-LIBS      += -L${SCALAPACK_PATH}/lib -lscalapack -llapack -lblas -lstdc++  -lrt -lmpi -lmpicxx 
+LIBS      += -L${SCALAPACK_PATH}/lib -lscalapack -lreflapack -lrefblas -lstdc++  -lrt -lmpi 
 
 
