@@ -16,8 +16,16 @@ FLAGS = -O0 -g -fopenmp -ffree-form -fimplicit-none -std=f2003
 %.o: %.F
 	$(FC) $(FLAGS) $(INCLUDES)  $< $(LIBS) -c -o $@
 
+test_carma: carma_mm.o test_carma.o
+	$(FC)  $(FLAGS) $(INCLUDES)  $^ $(LIBS) -o  $@
+
 $(EXE): $(OBJ)
 	$(FC)  $(FLAGS) $(INCLUDES)  $^ $(LIBS) -o  $@
+
+dbcsr_example_3: dbcsr_example_3.o
+	$(FC)  $(FLAGS) $(INCLUDES)  $^ $(LIBS) -o  $@
+
+all: test_carma $(EXE)
 
 clean:
 	rm -f *~ $(EXE) *.o *.mod

@@ -1,0 +1,251 @@
+!--------------------------------------------------------------------------------------------------!
+!   CP2K: A general program to perform molecular dynamics simulations                              !
+!   Copyright (C) 2000 - 2018  CP2K developers group                                               !
+!--------------------------------------------------------------------------------------------------!
+
+! **************************************************************************************************
+!> \brief   DBCSR example 3
+!>          This example shows how to multiply two dbcsr matrices
+!> \author  V. Weber
+!> \date    2010
+!> \version 1.0
+!>
+!> <b>Modification history:</b>
+!> - Created 2010
+! **************************************************************************************************
+PROGRAM dbcsr_example_3
+   USE dbcsr_api,                       ONLY: &
+        dbcsr_create, dbcsr_distribution_get, dbcsr_distribution_new, dbcsr_distribution_release, &
+        dbcsr_distribution_type, dbcsr_finalize, dbcsr_finalize_lib, dbcsr_get_stored_coordinates, &
+        dbcsr_init_lib, dbcsr_multiply, dbcsr_nblkcols_total, dbcsr_nblkrows_total, dbcsr_print, &
+        dbcsr_put_block, dbcsr_release, dbcsr_type_loc=>dbcsr_type, dbcsr_type_no_symmetry, dbcsr_type_real_8
+   USE kinds,                           ONLY: real_8
+   USE machine,                         ONLY: default_output_unit
+   USE message_passing,                 ONLY: mp_cart_create,&
+                                              mp_comm_free,&
+                                              mp_environ,&
+                                              mp_world_finalize,&
+                                              mp_world_init
+
+   use carma, only: carma_mm
+!$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
+
+   IMPLICIT NONE
+
+   TYPE(dbcsr_type_loc)                          :: matrix_a, matrix_b, matrix_c
+
+   INTEGER, DIMENSION(:), POINTER           :: blk_sizes_m, blk_sizes_n, blk_sizes_k
+   
+   INTEGER                                  :: mp_comm, group, numnodes, mynode, &
+                                               nblk_total_m, nblk_total_n, nblk_total_k, &
+
+                                               node_holds_blk, max_nze, nze, row, col, row_s, col_s, &
+                                               io_unit, max_row_size, max_col_size
+   
+   INTEGER, DIMENSION(2)                    :: npdims, myploc
+   INTEGER, DIMENSION(:), POINTER           :: dist_m, dist_n, dist_k
+   TYPE(dbcsr_distribution_type)             ::  dist_a, dist_b, dist_c
+   REAL(real_8), DIMENSION(:), ALLOCATABLE  :: values
+   LOGICAL                                  :: tr
+
+  character(len=32) :: cdimx, cdimy
+  integer :: m,n,k,nb
+   !***************************************************************************************
+
+   !
+   ! initialize mpi
+   CALL mp_world_init(mp_comm)
+
+   !
+   ! setup the mp enviroment
+   npdims(:) = 0
+
+
+
+  if (command_argument_count() >=2) then
+    call get_command_argument(1, cdimx)
+    call get_command_argument(2, cdimy)
+    read(cdimx,*) npdims(1)
+    read(cdimy,*) npdims(2)
+  endif
+
+   CALL mp_cart_create(mp_comm, 2, npdims, myploc, group)
+   CALL mp_environ(numnodes, mynode, group)
+   WRITE (*, *) 'mynode ', mynode, ' numnodes', numnodes
+
+  
+  open(unit=123,file="mnkb.dat",status="old",form="formatted")
+  read(123,*) m
+  read(123,*) n
+  read(123,*) k
+  read(123,*) nb
+  close(123)
+  !
+  !if (((n/nb) < prow) .or. ((n/nb) < pcol)) then
+  !   print *, "Problem size too small for processor set!"
+  !   stop 100
+  !endif
+   !***************************************************************************************
+   !
+   ! initialize libdbcsr
+   CALL dbcsr_init_lib()
+
+   !
+   ! set standard output parameters
+   io_unit = 0
+   IF (mynode .EQ. 0) io_unit = default_output_unit
+
+   !
+   ! the matrix will contain nblkrows_total row blocks and nblkcols_total column blocks
+   nblk_total_m = m / nb
+   nblk_total_n = n / nb
+   nblk_total_k = k / nb
+
+   !
+   ! set the block size for each row and column
+   ALLOCATE (blk_sizes_m(nblk_total_m), blk_sizes_n(nblk_total_n), blk_sizes_k(nblk_total_k))
+   blk_sizes_m(:) = nb
+   blk_sizes_n(:) = nb
+   blk_sizes_k(:) = nb
+
+   !
+   ! set the row and column distributions (here the distribution is set randomly)
+   CALL random_dist(dist_k, nblk_total_k, npdims(1))
+   CALL random_dist(dist_m, nblk_total_m, npdims(2))
+   CALL random_dist(dist_n, nblk_total_n, npdims(2))
+   
+   !
+   ! set the dbcsr distribution object
+   CALL dbcsr_distribution_new(dist_a, group=group, row_dist=dist_k, col_dist=dist_m, reuse_arrays=.false.)
+   CALL dbcsr_distribution_new(dist_b, group=group, row_dist=dist_k, col_dist=dist_n, reuse_arrays=.false.)
+   CALL dbcsr_distribution_new(dist_c, group=group, row_dist=dist_m, col_dist=dist_n, reuse_arrays=.false.)
+   
+   !
+   ! create the dbcsr matrices, i.e. a double precision non symmetric matrix
+   ! with nblk_total_m x nblkcols_total blocks and
+   ! sizes "sum(blk_sizes_k)" x "sum(col_blk_sizes)", distributed as
+   ! specified by the dist object
+   CALL dbcsr_create(matrix=matrix_a, &
+                     name="this is my matrix a", &
+                     dist=dist_a, &
+                     matrix_type=dbcsr_type_no_symmetry, &
+                     row_blk_size=blk_sizes_k, &
+                     col_blk_size=blk_sizes_m, &
+                     data_type=dbcsr_type_real_8)
+
+   CALL dbcsr_create(matrix=matrix_b, &
+                     name="this is my matrix b", &
+                     dist=dist_b, &
+                     matrix_type=dbcsr_type_no_symmetry, &
+                     row_blk_size=blk_sizes_k, &
+                     col_blk_size=blk_sizes_n, &
+                     data_type=dbcsr_type_real_8)
+
+   CALL dbcsr_create(matrix=matrix_c, &
+                     name="this is my matrix c", &
+                     dist=dist_c, &
+                     matrix_type=dbcsr_type_no_symmetry, &
+                     row_blk_size=blk_sizes_m, &
+                     col_blk_size=blk_sizes_n, &
+                     data_type=dbcsr_type_real_8)
+
+
+   !
+   ! set up the a matrix
+   CALL dbcsr_distribution_get(dist_a, mynode=mynode)
+   ALLOCATE (values( MAXVAL(blk_sizes_k) * MAXVAL(blk_sizes_m) ))
+   DO row = 1, dbcsr_nblkrows_total(matrix_a)
+      DO col = MAX(row-1, 1), MIN(row+1, dbcsr_nblkcols_total(matrix_a))
+         tr = .FALSE.
+         row_s = row; col_s = col
+         CALL dbcsr_get_stored_coordinates(matrix_a, row_s, col_s, node_holds_blk)
+         IF (node_holds_blk .EQ. mynode) THEN
+            nze = blk_sizes_k(row_s)*blk_sizes_m(col_s)
+            CALL RANDOM_NUMBER(values(1:nze))
+            CALL dbcsr_put_block(matrix_a, row_s, col_s, values(1:nze))
+         ENDIF
+      ENDDO
+   ENDDO
+   DEALLOCATE (values)
+
+   !
+   ! set up the b matrix
+   CALL dbcsr_distribution_get(dist_b, mynode=mynode)
+   ALLOCATE (values( MAXVAL(blk_sizes_k) * MAXVAL(blk_sizes_n) ))
+   DO row = 1, dbcsr_nblkrows_total(matrix_b)
+      DO col = MAX(row-1, 1), MIN(row+1, dbcsr_nblkcols_total(matrix_b))
+         tr = .FALSE.
+         row_s = row; col_s = col
+         CALL dbcsr_get_stored_coordinates(matrix_b, row_s, col_s, node_holds_blk)
+         IF (node_holds_blk .EQ. mynode) THEN
+            nze = blk_sizes_k(row_s)*blk_sizes_n(col_s)
+            CALL RANDOM_NUMBER(values(1:nze))
+            CALL dbcsr_put_block(matrix_b, row_s, col_s, values(1:nze))
+         ENDIF
+      ENDDO
+   ENDDO
+   DEALLOCATE (values)
+
+   !
+   ! finalize the dbcsr matrices
+   CALL dbcsr_finalize(matrix_a)
+   CALL dbcsr_finalize(matrix_b)
+   CALL dbcsr_finalize(matrix_c)
+
+   !
+   ! multiply the matrices
+   !CALL dbcsr_multiply('N', 'N', 1.0_real_8, matrix_a, matrix_b, 0.0_real_8, matrix_c)
+  
+  
+   call carma_mm(matrix_a%prv, matrix_b%prv, matrix_c%prv)
+   !
+   ! print the matrices
+   !CALL dbcsr_print(matrix_a)
+   !CALL dbcsr_print(matrix_b)
+   !CALL dbcsr_print(matrix_c)
+
+   !
+   ! release the matrices
+   CALL dbcsr_release(matrix_a)
+   CALL dbcsr_release(matrix_b)
+   CALL dbcsr_release(matrix_c)
+
+   CALL dbcsr_distribution_release(dist_a)
+   CALL dbcsr_distribution_release(dist_b)
+   CALL dbcsr_distribution_release(dist_c)
+   DEALLOCATE (blk_sizes_m, blk_sizes_n, blk_sizes_k)
+
+   !***************************************************************************************
+   !
+   ! finalize libdbcsr
+   CALL dbcsr_finalize_lib(mp_comm, io_unit)
+
+   !
+   ! finalize mpi
+   CALL mp_comm_free(group)
+   CALL mp_world_finalize()
+
+   !***************************************************************************************
+
+CONTAINS
+
+! **************************************************************************************************
+!> \brief ...
+!> \param dist_array ...
+!> \param dist_size ...
+!> \param nbins ...
+! **************************************************************************************************
+   SUBROUTINE random_dist(dist_array, dist_size, nbins)
+      INTEGER, DIMENSION(:), INTENT(out), POINTER        :: dist_array
+      INTEGER, INTENT(in)                                :: dist_size, nbins
+
+      INTEGER                                            :: i
+
+      ALLOCATE (dist_array(dist_size))
+      DO i = 1, dist_size
+         dist_array(i) = MODULO(nbins-i, nbins)
+      END DO
+
+   END SUBROUTINE random_dist
+
+END PROGRAM dbcsr_example_3
