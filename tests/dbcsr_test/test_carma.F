@@ -14,6 +14,8 @@
 !> - Created 2010
 ! **************************************************************************************************
 PROGRAM dbcsr_example_3
+ USE machine,                         ONLY: m_walltime,&
+                                             default_output_unit
    USE dbcsr_api,                       ONLY: &
         dbcsr_create, dbcsr_distribution_get, dbcsr_distribution_new, dbcsr_distribution_release, &
         dbcsr_distribution_type, dbcsr_finalize, dbcsr_finalize_lib, dbcsr_get_stored_coordinates, &
@@ -25,7 +27,7 @@ PROGRAM dbcsr_example_3
                                               mp_comm_free,&
                                               mp_environ,&
                                               mp_world_finalize,&
-                                              mp_world_init
+                                              mp_world_init, mp_sync, mp_max
 
    use carma, only: carma_mm
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
@@ -50,6 +52,8 @@ PROGRAM dbcsr_example_3
 
   character(len=32) :: cdimx, cdimy
   integer :: m,n,k,nb
+   real(8)                              :: t1, t2, total_time_dbcsr, max_times(2)
+   
    !***************************************************************************************
 
    !
@@ -193,11 +197,37 @@ PROGRAM dbcsr_example_3
    CALL dbcsr_finalize(matrix_c)
 
    !
-   ! multiply the matrices
-   !CALL dbcsr_multiply('N', 'N', 1.0_real_8, matrix_a, matrix_b, 0.0_real_8, matrix_c)
+
   
-  
+   CALL mp_sync(group)
+   t1 = m_walltime()
+   
    call carma_mm(matrix_a%prv, matrix_b%prv, matrix_c%prv)
+   
+   CALL mp_sync(group)
+   !print *,"+++++ carma time :", m_walltime()-t1
+   
+   max_times(1) = m_walltime()-t1
+   
+   
+   
+   print *,"----- compare with cannon -----"
+   
+   t1 = m_walltime()
+   ! multiply the matrices
+   CALL dbcsr_multiply('T', 'N', 1.0_real_8, matrix_a, matrix_b, 0.0_real_8, matrix_c)
+   
+   CALL mp_sync(group)
+   
+   max_times(2) = m_walltime()-t1
+   
+   !print *,"+++++ cannon time :", m_walltime()-t1
+
+   call mp_max(max_times, group)
+   
+   if (mynode == 0) print *,"max times: carma, cannon: ", max_times
+   !    call dbcsr_print(matrix_c)
+   
    !
    ! print the matrices
    !CALL dbcsr_print(matrix_a)
@@ -213,7 +243,8 @@ PROGRAM dbcsr_example_3
    CALL dbcsr_distribution_release(dist_a)
    CALL dbcsr_distribution_release(dist_b)
    CALL dbcsr_distribution_release(dist_c)
-   DEALLOCATE (blk_sizes_m, blk_sizes_n, blk_sizes_k)
+   
+   DEALLOCATE (blk_sizes_m, blk_sizes_n, blk_sizes_k,dist_m, dist_n, dist_k)
 
    !***************************************************************************************
    !

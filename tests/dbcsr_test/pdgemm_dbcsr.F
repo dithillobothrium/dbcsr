@@ -266,7 +266,7 @@ program matrix_matrix_multiply
 
 
 
-   call carma_mm(matA_dbcsr%prv, matB_dbcsr%prv, matC_dbcsr%prv)
+   !call carma_mm(matA_dbcsr%prv, matB_dbcsr%prv, matC_dbcsr%prv)
 
 
 

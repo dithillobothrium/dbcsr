@@ -23,7 +23,8 @@ module carma
                                               dbcsr_mp_npcols,&
                                               dbcsr_mp_nprows,&
                                               dbcsr_mp_numnodes,&
-                                              dbcsr_mp_new
+                                              dbcsr_mp_new,  &
+                                              dbcsr_mp_myprow
 
   USE message_passing,                 ONLY: mp_cart_create,&
                                              mp_comm_free,&
@@ -33,14 +34,18 @@ module carma
                                              mp_sync,&
                                              mp_cart_rank,&
                                              mp_max, &
-                                             mp_cart_sub
-                                             
+                                             mp_cart_sub, mp_waitall,  mp_irecv, mp_isend
+    USE dbcsr_data_methods                                     
     use dbcsr_work_operations
 
     use dbcsr_io, only: dbcsr_print
 
     use dbcsr_index_operations
     use dbcsr_multiply_api
+    
+    use dbcsr_operations
+    
+    use dbcsr_mp_operations,  only:  dbcsr_irecv_any, dbcsr_isend_any
 contains
     
   !
@@ -69,17 +74,32 @@ contains
     integer, dimension(:), pointer  :: row_dist, col_dist
     type(dbcsr_distribution_obj)    :: dist, loc_dist_a, loc_dist_b, loc_dist_c
     integer                         :: ierr
-    type(dbcsr_type)                :: loc_matr_a, loc_matr_b, loc_matr_c
-    type(dbcsr_mp_obj)              :: mp_env
+    
+    type(dbcsr_type)                :: loc_matr_a, loc_matr_b, loc_matr_c, loc_matr_c_store
+                                    
+    
+    type(dbcsr_type), pointer       :: loc_matr_c_recv, loc_matr_c_send, tmp_matr_ptr
+    
+    type(dbcsr_type), target        :: loc_matr_c_1, loc_matr_c_2
+    
+    type(dbcsr_mp_obj)              :: mp_env,  total_mp_env
 
-    type(dbcsr_data_obj)            :: data_buf_a, data_buf_b
+    type(dbcsr_data_obj)            :: send_nze_buffer
 
-
+    integer                     :: tick,  max_sizes(2),  requests(4),  proc_recv,  proc_send
+    
+    real(8)                     :: alpha, beta
+    
+    ! for summation
+    alpha = 1.0
+    beta= 1.0
+    
+    ! take distribution and communicator
     dist = matrix_a % dist
     dist_nrows_a = dbcsr_distribution_nrows(dist)
     dist_ncols_a = dbcsr_distribution_ncols(dist)
 
-    print *,"from carma"
+!     print *,"from carma"
     !print *,dist_nrows_a    
     !print *,dist_ncols_a
     
@@ -87,8 +107,9 @@ contains
     !print *,size(matrix_a%col_blk_size%low%data) 
 
         
-    group = dbcsr_mp_group(dbcsr_distribution_mp(dist))
-
+    total_mp_env = dbcsr_distribution_mp(dist)
+    group = dbcsr_mp_group(total_mp_env)
+    
     ! set subgrids keeping communication only along rows, communicating different columns (2nd dimension)   
     ! we consider 1 rank per row.
     ! TODO: any number of ranks per row
@@ -144,30 +165,33 @@ contains
     
        
     ! create local matrix a
-    call dbcsr_create(matrix = loc_matr_a, template = matrix_a, dist = loc_dist_a, data_buffer = matrix_a % data_area)
+    ! TODO , make_index=.false.
+    call dbcsr_create(matrix = loc_matr_a, template = matrix_a, dist = loc_dist_a, &
+                      data_buffer = matrix_a % data_area)
     
     allocate(loc_matr_a % index(size(matrix_a % index)))
     loc_matr_a % index(:) = matrix_a % index(:)
   
     call dbcsr_repoint_index(loc_matr_a)
 
-    print *, "matr a matrix%row_blk_size",loc_matr_a % row_blk_size % low % data
+!     print *, "matr a matrix%row_blk_size",loc_matr_a % row_blk_size % low % data
 
     loc_matr_a % valid = .true.
 
-    print *,"--------- local matrix a ---------------"
-    call dbcsr_print(loc_matr_a)
+!     print *,"--------- local matrix a ---------------"
+!     call dbcsr_print(loc_matr_a)
      
     ! create local matrix b
-    call dbcsr_create(matrix = loc_matr_b, template = matrix_b, dist = loc_dist_b, data_buffer = matrix_b % data_area)
+    call dbcsr_create(matrix = loc_matr_b, template = matrix_b, dist = loc_dist_b, &
+                      data_buffer = matrix_b % data_area)
 
     allocate(loc_matr_b % index(size(matrix_b % index)))
     loc_matr_b % index(:) = matrix_b % index(:)
     
     call dbcsr_repoint_index(loc_matr_b)
     
-    print *,"--------- local matrix b ---------------"
-    call dbcsr_print(loc_matr_b)
+!     print *,"--------- local matrix b ---------------"
+!     call dbcsr_print(loc_matr_b)
     
     call dbcsr_create(loc_matr_c, "loc_matr_c", loc_dist_c, dbcsr_type_no_symmetry, &
                       row_blk_size_c, col_blk_size_c, matrix_a % col_blk_size, matrix_b % col_blk_size, &
@@ -180,17 +204,101 @@ contains
     ! multiply local matrices
     CALL dbcsr_multiply('T', 'N', 1.0d0, loc_matr_a, loc_matr_b, 0.0d0, loc_matr_c)
    
-    print *,"--------- local matrix c ---------------"
-    call dbcsr_print(loc_matr_c)
-   
-    print *,"finita"
-     
+!     print *,"--------- local matrix c ---------------"
+!     call dbcsr_print(loc_matr_c)
+    print *,"index size", loc_matr_c % index(1)
+    print *,"nze", loc_matr_c % nze
+    
+    max_sizes(1) = loc_matr_c % nze
+    max_sizes(2) = loc_matr_c % index(1)
+    
+    call mp_max(max_sizes, group)
+    
+    print *,"max sizes", max_sizes
+    
+    ! TODO , make_index=.false.
+    ! create send matrix
+    call dbcsr_create(matrix = loc_matr_c_1, template = loc_matr_c, nze = max_sizes(1))
+    
+    allocate(loc_matr_c_1 % index( max_sizes(2) ))
+    
+    call dbcsr_repoint_index(loc_matr_c_1)
+    loc_matr_c_1 % valid=.true.
+    
+    call dbcsr_copy(loc_matr_c_1, loc_matr_c)
 
+        
+    ! recv matrix
+    call dbcsr_create(matrix = loc_matr_c_2, name = "loc_matr_c_2" ,template = loc_matr_c, nze = max_sizes(1) )
+    allocate(loc_matr_c_2 % index( max_sizes(2) ))
+    
+    
+    loc_matr_c_send => loc_matr_c_1
+    loc_matr_c_recv => loc_matr_c_2
+    
+    
+    proc_recv = mod(dbcsr_mp_myprow(total_mp_env) + 1, dbcsr_mp_nprows(total_mp_env) )
+    proc_send = dbcsr_mp_myprow(total_mp_env) - 1
+    
+    if (proc_send < 0) proc_send = dbcsr_mp_nprows(total_mp_env) - 1
+        
+    print *,"send proc, recv prc ",     proc_send,  proc_recv
+    
+    call dbcsr_data_init(send_nze_buffer)
+    call dbcsr_data_new(send_nze_buffer, loc_matr_c_send % data_type)
+        
+    do tick = 1 , dbcsr_mp_nprows(total_mp_env) 
+        
+        if (tick > 1) then
+            call mp_waitall(requests)
+            call dbcsr_repoint_index(loc_matr_c_send)
+            loc_matr_c_send % valid = .true.
+        endif
+        
+        if (tick < dbcsr_mp_nprows(total_mp_env) ) then
+            ! recv send
+            CALL dbcsr_irecv_any(loc_matr_c_recv % data_area, proc_recv, group, requests(1))
+            
+            CALL mp_irecv(loc_matr_c_recv % index, proc_recv, group, requests(2))
+            
+            CALL dbcsr_data_set_pointer(area = send_nze_buffer, &
+                                        rsize = loc_matr_c_send % nze, &
+                                        csize = 1, &
+                                        pointee = loc_matr_c_send % data_area)
+                        
+            CALL dbcsr_isend_any(send_nze_buffer, proc_send, group, requests(3))
+            
+            CALL mp_isend(loc_matr_c_send % index(1:loc_matr_c_send % index(1)), proc_send, group, requests(4))
+        endif
+        
+        if (tick > 1) then
+            
+!         print *," ^^^^^^^^^^^ tick ", tick 
+!         print *, " ##### send matrix matrix #########"
+!         call dbcsr_print(loc_matr_c_send)
+!         print *, "#### receive matrix #####"
+!         call dbcsr_print(loc_matr_c_recv)
+            
+            call dbcsr_add(loc_matr_c, loc_matr_c_send,  alpha, beta )
+            
+        endif
+    
+        tmp_matr_ptr => loc_matr_c_send
+        loc_matr_c_send => loc_matr_c_recv
+        loc_matr_c_recv => tmp_matr_ptr
+        
+    enddo
+    
+!     print *, "==================== result matrix ================="
+!     call dbcsr_print(loc_matr_c)
+    
     call mp_comm_free(row_group)
 
-    print *,"finita zwei"
     
     ! release the matrices
+   CALL dbcsr_release(loc_matr_c_1)
+   CALL dbcsr_release(loc_matr_c_2)
+   
    CALL dbcsr_release(loc_matr_a)
    CALL dbcsr_release(loc_matr_b)
    CALL dbcsr_release(loc_matr_c)
