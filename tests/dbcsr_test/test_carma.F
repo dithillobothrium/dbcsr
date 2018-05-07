@@ -27,14 +27,29 @@ PROGRAM dbcsr_example_3
                                               mp_comm_free,&
                                               mp_environ,&
                                               mp_world_finalize,&
-                                              mp_world_init, mp_sync, mp_max
+                                              mp_world_init, mp_sync, mp_max,&
+                                              add_mp_perf_env,&
+                                              rm_mp_perf_env
+   USE cp_error_handling,               ONLY: cp_error_handling_setup
+   USE string_table,                    ONLY: string_table_allocate,&
+                                              string_table_deallocate
+   USE timings,                         ONLY: add_timer_env,&
+                                              timings_register_hooks,&
+                                              rm_timer_env
+   USE timings_report,                  ONLY: cost_type_time,&
+                                              timings_report_print
+   USE cp_para_types,                   ONLY: cp_para_env_type
+   USE cp_para_env,                     ONLY: cp_para_env_create
+   USE kinds,                           ONLY: dp
 
    use carma, only: carma_mm
+   
+   
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
 
    IMPLICIT NONE
 
-   TYPE(dbcsr_type_loc)                          :: matrix_a, matrix_b, matrix_c
+   TYPE(dbcsr_type_loc)                          :: matrix_a, matrix_b, matrix_c, matrix_c_cannon
 
    INTEGER, DIMENSION(:), POINTER           :: blk_sizes_m, blk_sizes_n, blk_sizes_k
    
@@ -45,20 +60,29 @@ PROGRAM dbcsr_example_3
                                                io_unit, max_row_size, max_col_size
    
    INTEGER, DIMENSION(2)                    :: npdims, myploc
-   INTEGER, DIMENSION(:), POINTER           :: dist_m, dist_n, dist_k
-   TYPE(dbcsr_distribution_type)             ::  dist_a, dist_b, dist_c
+   INTEGER, DIMENSION(:), POINTER           :: dist_m, dist_n, dist_k, dist_m_cannon
+   TYPE(dbcsr_distribution_type)             ::  dist_a, dist_b, dist_c, dist_c_cannon
    REAL(real_8), DIMENSION(:), ALLOCATABLE  :: values
    LOGICAL                                  :: tr
 
   character(len=32) :: cdimx, cdimy
   integer :: m,n,k,nb
    real(8)                              :: t1, t2, total_time_dbcsr, max_times(2)
+   TYPE(cp_para_env_type), POINTER          :: para_env
    
    !***************************************************************************************
 
    !
    ! initialize mpi
    CALL mp_world_init(mp_comm)
+
+   NULLIFY(para_env)
+   CALL cp_para_env_create(para_env, group=mp_comm, owns_group=.FALSE.)
+   CALL cp_error_handling_setup()
+   CALL timings_register_hooks()
+   CALL string_table_allocate()
+   CALL add_mp_perf_env()
+   CALL add_timer_env()
 
    !
    ! setup the mp enviroment
@@ -118,12 +142,16 @@ PROGRAM dbcsr_example_3
    CALL random_dist(dist_m, nblk_total_m, npdims(2))
    CALL random_dist(dist_n, nblk_total_n, npdims(2))
    
+   CALL random_dist(dist_m_cannon, nblk_total_m, npdims(1))
+   
    !
    ! set the dbcsr distribution object
    CALL dbcsr_distribution_new(dist_a, group=group, row_dist=dist_k, col_dist=dist_m, reuse_arrays=.false.)
    CALL dbcsr_distribution_new(dist_b, group=group, row_dist=dist_k, col_dist=dist_n, reuse_arrays=.false.)
    CALL dbcsr_distribution_new(dist_c, group=group, row_dist=dist_m, col_dist=dist_n, reuse_arrays=.false.)
    
+   CALL dbcsr_distribution_new(dist_c_cannon, group=group, row_dist=dist_m_cannon, col_dist=dist_n, &
+                               reuse_arrays=.false.)
    !
    ! create the dbcsr matrices, i.e. a double precision non symmetric matrix
    ! with nblk_total_m x nblkcols_total blocks and
@@ -154,12 +182,20 @@ PROGRAM dbcsr_example_3
                      data_type=dbcsr_type_real_8)
 
 
+   CALL dbcsr_create(matrix=matrix_c_cannon, &
+                     name="this is my matrix c", &
+                     dist=dist_c_cannon, &
+                     matrix_type=dbcsr_type_no_symmetry, &
+                     row_blk_size=blk_sizes_m, &
+                     col_blk_size=blk_sizes_n, &
+                     data_type=dbcsr_type_real_8)
+                     
    !
    ! set up the a matrix
    CALL dbcsr_distribution_get(dist_a, mynode=mynode)
    ALLOCATE (values( MAXVAL(blk_sizes_k) * MAXVAL(blk_sizes_m) ))
    DO row = 1, dbcsr_nblkrows_total(matrix_a)
-      DO col = MAX(row-1, 1), MIN(row+1, dbcsr_nblkcols_total(matrix_a))
+      DO col = 2, dbcsr_nblkcols_total(matrix_a)
          tr = .FALSE.
          row_s = row; col_s = col
          CALL dbcsr_get_stored_coordinates(matrix_a, row_s, col_s, node_holds_blk)
@@ -177,7 +213,7 @@ PROGRAM dbcsr_example_3
    CALL dbcsr_distribution_get(dist_b, mynode=mynode)
    ALLOCATE (values( MAXVAL(blk_sizes_k) * MAXVAL(blk_sizes_n) ))
    DO row = 1, dbcsr_nblkrows_total(matrix_b)
-      DO col = MAX(row-1, 1), MIN(row+1, dbcsr_nblkcols_total(matrix_b))
+      DO col = 2, dbcsr_nblkcols_total(matrix_b)
          tr = .FALSE.
          row_s = row; col_s = col
          CALL dbcsr_get_stored_coordinates(matrix_b, row_s, col_s, node_holds_blk)
@@ -195,6 +231,7 @@ PROGRAM dbcsr_example_3
    CALL dbcsr_finalize(matrix_a)
    CALL dbcsr_finalize(matrix_b)
    CALL dbcsr_finalize(matrix_c)
+   CALL dbcsr_finalize(matrix_c_cannon)
 
    !
 
@@ -202,30 +239,37 @@ PROGRAM dbcsr_example_3
    CALL mp_sync(group)
    t1 = m_walltime()
    
-   call carma_mm(matrix_a%prv, matrix_b%prv, matrix_c%prv)
+   !call carma_mm(matrix_a%prv, matrix_b%prv, matrix_c%prv)
    
    CALL mp_sync(group)
-   !print *,"+++++ carma time :", m_walltime()-t1
+   
    
    max_times(1) = m_walltime()-t1
    
+   print *,"+++++ carma time :", m_walltime()-t1
    
    
    print *,"----- compare with cannon -----"
    
+   CALL mp_sync(group)
    t1 = m_walltime()
+   
    ! multiply the matrices
-   CALL dbcsr_multiply('T', 'N', 1.0_real_8, matrix_a, matrix_b, 0.0_real_8, matrix_c)
+   CALL dbcsr_multiply('T', 'N', 1.0_real_8, matrix_a, matrix_b, 0.0_real_8, matrix_c_cannon)
    
    CALL mp_sync(group)
    
    max_times(2) = m_walltime()-t1
    
-   !print *,"+++++ cannon time :", m_walltime()-t1
+   print *,"+++++ cannon time :", m_walltime()-t1
 
+   print *,"cannon result: nze", matrix_c_cannon % prv % nze
+   
+   
    call mp_max(max_times, group)
    
-   if (mynode == 0) print *,"max times: carma, cannon: ", max_times
+   if (mynode == 0) print *,"!!!!!!!!!!!!!!!!!!!! max times: carma, cannon: ", max_times
+   
    !    call dbcsr_print(matrix_c)
    
    !
@@ -233,20 +277,24 @@ PROGRAM dbcsr_example_3
    !CALL dbcsr_print(matrix_a)
    !CALL dbcsr_print(matrix_b)
    !CALL dbcsr_print(matrix_c)
+   !CALL dbcsr_print(matrix_c_cannon)
 
    !
    ! release the matrices
    CALL dbcsr_release(matrix_a)
    CALL dbcsr_release(matrix_b)
    CALL dbcsr_release(matrix_c)
-
+   CALL dbcsr_release(matrix_c_cannon)
+   
    CALL dbcsr_distribution_release(dist_a)
    CALL dbcsr_distribution_release(dist_b)
    CALL dbcsr_distribution_release(dist_c)
+   CALL dbcsr_distribution_release(dist_c_cannon)
    
-   DEALLOCATE (blk_sizes_m, blk_sizes_n, blk_sizes_k,dist_m, dist_n, dist_k)
+   DEALLOCATE (blk_sizes_m, blk_sizes_n, blk_sizes_k, dist_m, dist_m_cannon, dist_n, dist_k)
 
    !***************************************************************************************
+
    !
    ! finalize libdbcsr
    CALL dbcsr_finalize_lib(mp_comm, io_unit)
@@ -254,6 +302,15 @@ PROGRAM dbcsr_example_3
    !
    ! finalize mpi
    CALL mp_comm_free(group)
+   
+      ! Print timers
+   CALL timings_report_print(io_unit, 0.0_dp, .FALSE., cost_type_time, .TRUE., para_env)
+
+   ! Remove timers
+   CALL rm_timer_env()
+   CALL rm_mp_perf_env()
+   CALL string_table_deallocate(0)
+   
    CALL mp_world_finalize()
 
    !***************************************************************************************

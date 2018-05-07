@@ -1,7 +1,8 @@
 
 
 module carma
-
+ USE machine,                         ONLY: m_walltime,&
+                                             default_output_unit
    USE dbcsr_dist_methods,              ONLY: &
         dbcsr_distribution_col_dist, dbcsr_distribution_get_num_images_1d, &
         dbcsr_distribution_has_threads, dbcsr_distribution_hold, dbcsr_distribution_make_threads, &
@@ -16,8 +17,7 @@ module carma
         dbcsr_nfullcols_total, dbcsr_nfullrows_total,  dbcsr_release_locals, &
         dbcsr_row_block_offsets, dbcsr_release, dbcsr_mp_release
 
-     USE dbcsr_types,                     ONLY: &
-              dbcsr_type, dbcsr_data_obj, dbcsr_distribution_obj, dbcsr_mp_obj,dbcsr_type_no_symmetry
+     USE dbcsr_types
 
    USE dbcsr_mp_methods,                ONLY: dbcsr_mp_group,&
                                               dbcsr_mp_npcols,&
@@ -88,7 +88,7 @@ contains
 
     integer                     :: tick,  max_sizes(2),  requests(4),  proc_recv,  proc_send
     
-    real(8)                     :: alpha, beta
+    real(8)                     :: alpha, beta, t1
     
     ! for summation
     alpha = 1.0
@@ -172,8 +172,17 @@ contains
     allocate(loc_matr_a % index(size(matrix_a % index)))
     loc_matr_a % index(:) = matrix_a % index(:)
   
+    print *,"sizes   ",loc_matr_a % index(dbcsr_slot_nfullcols_local), loc_matr_a % index(dbcsr_slot_nfullrows_local)
+    
+    loc_matr_a % index(dbcsr_slot_nfullcols_total) =  loc_matr_a % index(dbcsr_slot_nfullcols_local)
+    loc_matr_a % index(dbcsr_slot_nfullrows_total) =  loc_matr_a % index(dbcsr_slot_nfullrows_local)
+    
     call dbcsr_repoint_index(loc_matr_a)
 
+    loc_matr_a % nfullrows_total = loc_matr_a % index(dbcsr_slot_nfullrows_local) 
+    loc_matr_a % nfullcols_total = loc_matr_a % index(dbcsr_slot_nfullcols_local)
+    
+    print *,"asdfsdf", loc_matr_a % nfullrows_local , loc_matr_a % nfullcols_local 
 !     print *, "matr a matrix%row_blk_size",loc_matr_a % row_blk_size % low % data
 
     loc_matr_a % valid = .true.
@@ -188,7 +197,13 @@ contains
     allocate(loc_matr_b % index(size(matrix_b % index)))
     loc_matr_b % index(:) = matrix_b % index(:)
     
+    loc_matr_b % index(dbcsr_slot_nfullcols_total) =  loc_matr_b % index(dbcsr_slot_nfullcols_local)
+    loc_matr_b % index(dbcsr_slot_nfullrows_total) =  loc_matr_b % index(dbcsr_slot_nfullrows_local)
+    
     call dbcsr_repoint_index(loc_matr_b)
+    
+    loc_matr_b % nfullrows_total = loc_matr_b % index(dbcsr_slot_nfullrows_local) 
+    loc_matr_b % nfullcols_total = loc_matr_b % index(dbcsr_slot_nfullcols_local)
     
 !     print *,"--------- local matrix b ---------------"
 !     call dbcsr_print(loc_matr_b)
@@ -201,8 +216,22 @@ contains
     loc_matr_b % valid=.true.
     loc_matr_c % valid=.true.
     
+    
+    
+    
+    print *,"occ a ,b", dbcsr_get_occupation(loc_matr_a), dbcsr_get_occupation(loc_matr_b)
+    
+    
+    CALL mp_sync(group)
+    t1 = m_walltime()
+    
+    
     ! multiply local matrices
     CALL dbcsr_multiply('T', 'N', 1.0d0, loc_matr_a, loc_matr_b, 0.0d0, loc_matr_c)
+   
+   CALL mp_sync(group)
+   
+   print *,"+++++ carma dbcsr_multiply :",dbcsr_mp_myprow(total_mp_env), m_walltime()-t1
    
 !     print *,"--------- local matrix c ---------------"
 !     call dbcsr_print(loc_matr_c)
