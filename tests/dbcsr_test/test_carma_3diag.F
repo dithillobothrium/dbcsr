@@ -65,12 +65,11 @@ PROGRAM dbcsr_example_3
    REAL(real_8), DIMENSION(:), ALLOCATABLE  :: values
    LOGICAL                                  :: tr
 
-  character(len=32) :: cdimx, cdimy, run_order_char, rnd_thr_char
+  character(len=32) :: cdimx, cdimy, run_order_char
   integer :: m,n,k,nb, run_order
    real(8)                              :: t1, t2, total_time_dbcsr, max_times(2)
    TYPE(cp_para_env_type), POINTER          :: para_env
    
-   real                                 :: rnd, rnd_thr
    !***************************************************************************************
 
    !
@@ -89,19 +88,16 @@ PROGRAM dbcsr_example_3
    ! setup the mp enviroment
    npdims(:) = 0
 
-  ! sparsity level 1.0 = dense, 0.0 = empty
-  rnd_thr=0.3
+
 
   if (command_argument_count() >=2) then
     call get_command_argument(1, cdimx)
     call get_command_argument(2, cdimy)
     call get_command_argument(3, run_order_char)
-    call get_command_argument(4, rnd_thr_char)
 
     read(cdimx,*) npdims(1)
     read(cdimy,*) npdims(2)
     read(run_order_char,*) run_order
-    read(rnd_thr_char,*) rnd_thr
 
   endif
 
@@ -198,25 +194,20 @@ PROGRAM dbcsr_example_3
                      col_blk_size=blk_sizes_n, &
                      data_type=dbcsr_type_real_8)
                      
-   call random_seed()
-
    !
    ! set up the a matrix
    CALL dbcsr_distribution_get(dist_a, mynode=mynode)
    ALLOCATE (values( MAXVAL(blk_sizes_k) * MAXVAL(blk_sizes_m) ))
    DO row = 1, dbcsr_nblkrows_total(matrix_a)
-      DO col = 1, dbcsr_nblkcols_total(matrix_a)
-         call random_number(rnd)
-         if (rnd <= rnd_thr) then
-             tr = .FALSE.
-             row_s = row; col_s = col
-             CALL dbcsr_get_stored_coordinates(matrix_a, row_s, col_s, node_holds_blk)
-             IF (node_holds_blk .EQ. mynode) THEN
-                nze = blk_sizes_k(row_s)*blk_sizes_m(col_s)
-                CALL RANDOM_NUMBER(values(1:nze))
-                CALL dbcsr_put_block(matrix_a, row_s, col_s, values(1:nze))
-             ENDIF
-         endif
+      DO col = MAX(row-1, 1), MIN(row+1, dbcsr_nblkcols_total(matrix_a))
+         tr = .FALSE.
+         row_s = row; col_s = col
+         CALL dbcsr_get_stored_coordinates(matrix_a, row_s, col_s, node_holds_blk)
+         IF (node_holds_blk .EQ. mynode) THEN
+            nze = blk_sizes_k(row_s)*blk_sizes_m(col_s)
+            CALL RANDOM_NUMBER(values(1:nze))
+            CALL dbcsr_put_block(matrix_a, row_s, col_s, values(1:nze))
+         ENDIF
       ENDDO
    ENDDO
    DEALLOCATE (values)
@@ -226,18 +217,15 @@ PROGRAM dbcsr_example_3
    CALL dbcsr_distribution_get(dist_b, mynode=mynode)
    ALLOCATE (values( MAXVAL(blk_sizes_k) * MAXVAL(blk_sizes_n) ))
    DO row = 1, dbcsr_nblkrows_total(matrix_b)
-      DO col = 1, dbcsr_nblkcols_total(matrix_b)
-         call random_number(rnd)
-         if (rnd <= rnd_thr) then
-             tr = .FALSE.
-             row_s = row; col_s = col
-             CALL dbcsr_get_stored_coordinates(matrix_b, row_s, col_s, node_holds_blk)
-             IF (node_holds_blk .EQ. mynode) THEN
-                nze = blk_sizes_k(row_s)*blk_sizes_n(col_s)
-                CALL RANDOM_NUMBER(values(1:nze))
-                CALL dbcsr_put_block(matrix_b, row_s, col_s, values(1:nze))
-             ENDIF
-         endif
+      DO col = MAX(row-1, 1), MIN(row+1, dbcsr_nblkcols_total(matrix_b))
+         tr = .FALSE.
+         row_s = row; col_s = col
+         CALL dbcsr_get_stored_coordinates(matrix_b, row_s, col_s, node_holds_blk)
+         IF (node_holds_blk .EQ. mynode) THEN
+            nze = blk_sizes_k(row_s)*blk_sizes_n(col_s)
+            CALL RANDOM_NUMBER(values(1:nze))
+            CALL dbcsr_put_block(matrix_b, row_s, col_s, values(1:nze))
+         ENDIF
       ENDDO
    ENDDO
    DEALLOCATE (values)
@@ -250,10 +238,10 @@ PROGRAM dbcsr_example_3
    CALL dbcsr_finalize(matrix_c_cannon)
 
    !
-
+   max_times(:)=0
    if (run_order == 0) then
        
-       do row = 1, 3    
+       do row = 1, 100    
            CALL mp_sync(group)
            t1 = m_walltime()
            
@@ -262,7 +250,7 @@ PROGRAM dbcsr_example_3
            
            CALL mp_sync(group)
            
-           max_times(2) = m_walltime()-t1
+           if (row >=2) max_times(2) = max_times(2) + m_walltime()-t1
        enddo
 
        print *,"+++++ cannon time :", m_walltime()-t1
@@ -271,7 +259,7 @@ PROGRAM dbcsr_example_3
    
    else
 
-       do row = 1, 3    
+       do row = 1, 100    
            CALL mp_sync(group)
            t1 = m_walltime()
            
@@ -280,7 +268,7 @@ PROGRAM dbcsr_example_3
            CALL mp_sync(group)
            
            
-           max_times(1) = m_walltime()-t1
+           if (row >=2) max_times(1) = max_times(1) + m_walltime()-t1
        enddo
 
        print *,"+++++ carma time :", m_walltime()-t1
@@ -289,7 +277,7 @@ PROGRAM dbcsr_example_3
   
    call mp_max(max_times, group)
    
-   if (mynode == 0) print *,"!!!!!!!!!!!!!!!!!!!! max times: carma, cannon: ", max_times
+   if (mynode == 0) print *,"!!!!!!!!!!!!!!!!!!!! max times: carma, cannon: ", max_times/100
    
    !    call dbcsr_print(matrix_c)
    
