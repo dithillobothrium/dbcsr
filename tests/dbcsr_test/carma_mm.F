@@ -34,7 +34,8 @@ module carma
                                              mp_sync,&
                                              mp_cart_rank,&
                                              mp_max, &
-                                             mp_cart_sub, mp_waitall,  mp_irecv, mp_isend
+                                             mp_cart_sub, mp_waitall,  mp_irecv, mp_isend, &
+                                             mp_sum
     USE dbcsr_data_methods                                     
     use dbcsr_work_operations
 
@@ -86,8 +87,8 @@ contains
 
     type(dbcsr_data_obj)            :: send_nze_buffer
 
-    integer                     :: tick,  max_sizes(2),  requests(4),  proc_recv,  proc_send
-    
+    integer                     :: tick, max_sizes(2),  requests(4),  proc_recv,  proc_send
+    integer(8)                  :: sum_nze
     real(8)                     :: alpha, beta, t1
     
     ! for summation
@@ -240,8 +241,10 @@ contains
     
     max_sizes(1) = loc_matr_c % nze
     max_sizes(2) = loc_matr_c % index(1)
-    
+    sum_nze = loc_matr_c % nze
+
     call mp_max(max_sizes, group)
+    call mp_sum(sum_nze, group)
     
     print *,"max sizes", max_sizes
     
@@ -276,6 +279,9 @@ contains
     call dbcsr_data_init(send_nze_buffer)
     call dbcsr_data_new(send_nze_buffer, loc_matr_c_send % data_type)
         
+    ! test batched add
+    call dbcsr_batched_add_anytype_begin(loc_matr_c, loc_matr_c_send,  alpha, beta, sum_nze)
+
     do tick = 1 , dbcsr_mp_nprows(total_mp_env) 
         
         if (tick > 1) then
@@ -308,7 +314,7 @@ contains
 !         print *, "#### receive matrix #####"
 !         call dbcsr_print(loc_matr_c_recv)
             
-            call dbcsr_add(loc_matr_c, loc_matr_c_send,  alpha, beta )
+            call dbcsr_batched_add_anytype(loc_matr_c, loc_matr_c_send, beta )
             
         endif
     
@@ -318,6 +324,9 @@ contains
         
     enddo
     
+    ! finalize matrix after add
+    call dbcsr_batched_add_anytype_end(loc_matr_c)
+
 !     print *, "==================== result matrix ================="
 !     call dbcsr_print(loc_matr_c)
     

@@ -65,8 +65,8 @@ PROGRAM dbcsr_example_3
    REAL(real_8), DIMENSION(:), ALLOCATABLE  :: values
    LOGICAL                                  :: tr
 
-  character(len=32) :: cdimx, cdimy, run_order_char, rnd_thr_char
-  integer :: m,n,k,nb, run_order
+  character(len=32) :: cdimx, cdimy, run_order_char, rnd_thr_char, niter_char
+  integer :: m,n,k,nb, run_order, niter
    real(8)                              :: t1, t2, total_time_dbcsr, max_times(2)
    TYPE(cp_para_env_type), POINTER          :: para_env
    
@@ -92,16 +92,20 @@ PROGRAM dbcsr_example_3
   ! sparsity level 1.0 = dense, 0.0 = empty
   rnd_thr=0.3
 
+  niter=10
+
   if (command_argument_count() >=2) then
     call get_command_argument(1, cdimx)
     call get_command_argument(2, cdimy)
     call get_command_argument(3, run_order_char)
     call get_command_argument(4, rnd_thr_char)
+    call get_command_argument(5, niter_char)
 
     read(cdimx,*) npdims(1)
     read(cdimy,*) npdims(2)
     read(run_order_char,*) run_order
     read(rnd_thr_char,*) rnd_thr
+    read(niter_char,*) niter
 
   endif
 
@@ -251,9 +255,10 @@ PROGRAM dbcsr_example_3
 
    !
 
+   max_times(:) = 0
    if (run_order == 0) then
        
-       do row = 1, 3    
+       do row = 1, niter
            CALL mp_sync(group)
            t1 = m_walltime()
            
@@ -262,16 +267,16 @@ PROGRAM dbcsr_example_3
            
            CALL mp_sync(group)
            
-           max_times(2) = m_walltime()-t1
+           max_times(2) = max_times(2) +  m_walltime()-t1
        enddo
 
-       print *,"+++++ cannon time :", m_walltime()-t1
+       !print *,"+++++ cannon time :", m_walltime()-t1
 
-       print *,"cannon result: nze", matrix_c_cannon % prv % nze
+       !print *,"cannon result: nze", matrix_c_cannon % prv % nze
    
    else
 
-       do row = 1, 3    
+       do row = 1, niter    
            CALL mp_sync(group)
            t1 = m_walltime()
            
@@ -280,16 +285,16 @@ PROGRAM dbcsr_example_3
            CALL mp_sync(group)
            
            
-           max_times(1) = m_walltime()-t1
+           max_times(1) = max_times(1) + m_walltime()-t1
        enddo
 
-       print *,"+++++ carma time :", m_walltime()-t1
+       !print *,"+++++ carma time :", m_walltime()-t1
        
   endif 
   
    call mp_max(max_times, group)
    
-   if (mynode == 0) print *,"!!!!!!!!!!!!!!!!!!!! max times: carma, cannon: ", max_times
+   if (mynode == 0) print *,"!!!!!!!!!!!!!!!!!!!! max times: carma, cannon: ", max_times/niter
    
    !    call dbcsr_print(matrix_c)
    
