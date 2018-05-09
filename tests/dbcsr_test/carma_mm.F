@@ -173,7 +173,7 @@ contains
     allocate(loc_matr_a % index(size(matrix_a % index)))
     loc_matr_a % index(:) = matrix_a % index(:)
   
-    print *,"sizes   ",loc_matr_a % index(dbcsr_slot_nfullcols_local), loc_matr_a % index(dbcsr_slot_nfullrows_local)
+    !print *,"sizes   ",loc_matr_a % index(dbcsr_slot_nfullcols_local), loc_matr_a % index(dbcsr_slot_nfullrows_local)
     
     loc_matr_a % index(dbcsr_slot_nfullcols_total) =  loc_matr_a % index(dbcsr_slot_nfullcols_local)
     loc_matr_a % index(dbcsr_slot_nfullrows_total) =  loc_matr_a % index(dbcsr_slot_nfullrows_local)
@@ -183,7 +183,7 @@ contains
     loc_matr_a % nfullrows_total = loc_matr_a % index(dbcsr_slot_nfullrows_local) 
     loc_matr_a % nfullcols_total = loc_matr_a % index(dbcsr_slot_nfullcols_local)
     
-    print *,"asdfsdf", loc_matr_a % nfullrows_local , loc_matr_a % nfullcols_local 
+    !print *,"asdfsdf", loc_matr_a % nfullrows_local , loc_matr_a % nfullcols_local 
 !     print *, "matr a matrix%row_blk_size",loc_matr_a % row_blk_size % low % data
 
     loc_matr_a % valid = .true.
@@ -220,7 +220,7 @@ contains
     
     
     
-    print *,"occ a ,b", dbcsr_get_occupation(loc_matr_a), dbcsr_get_occupation(loc_matr_b)
+    !print *,"occ a ,b", dbcsr_get_occupation(loc_matr_a), dbcsr_get_occupation(loc_matr_b)
     
     
     CALL mp_sync(group)
@@ -232,12 +232,12 @@ contains
    
    CALL mp_sync(group)
    
-   print *,"+++++ carma dbcsr_multiply :",dbcsr_mp_myprow(total_mp_env), m_walltime()-t1
+   !print *,"+++++ carma dbcsr_multiply :",dbcsr_mp_myprow(total_mp_env), m_walltime()-t1
    
 !     print *,"--------- local matrix c ---------------"
 !     call dbcsr_print(loc_matr_c)
-    print *,"index size", loc_matr_c % index(1)
-    print *,"nze", loc_matr_c % nze
+    !print *,"index size", loc_matr_c % index(1)
+    !print *,"nze", loc_matr_c % nze
     
     max_sizes(1) = loc_matr_c % nze
     max_sizes(2) = loc_matr_c % index(1)
@@ -246,7 +246,11 @@ contains
     call mp_max(max_sizes, group)
     call mp_sum(sum_nze, group)
     
-    print *,"max sizes", max_sizes
+    
+    if (dbcsr_mp_myprow(total_mp_env) == 0) then
+        print *,"-- max sizes", max_sizes
+        print *,"-- sum_beta_nze", sum_nze
+    endif
     
     ! TODO , make_index=.false.
     ! create send matrix
@@ -274,7 +278,7 @@ contains
     
     if (proc_send < 0) proc_send = dbcsr_mp_nprows(total_mp_env) - 1
         
-    print *,"send proc, recv prc ",     proc_send,  proc_recv
+    !print *,"send proc, recv prc ",     proc_send,  proc_recv
     
     call dbcsr_data_init(send_nze_buffer)
     call dbcsr_data_new(send_nze_buffer, loc_matr_c_send % data_type)
@@ -328,7 +332,7 @@ contains
     call dbcsr_batched_add_anytype_end(loc_matr_c)
 
 !     print *, "==================== result matrix ================="
-!     call dbcsr_print(loc_matr_c)
+    !call dbcsr_print(loc_matr_c)
     
     call mp_comm_free(row_group)
 

@@ -202,7 +202,7 @@ PROGRAM dbcsr_example_3
                      col_blk_size=blk_sizes_n, &
                      data_type=dbcsr_type_real_8)
                      
-   call random_seed()
+
 
    !
    ! set up the a matrix
@@ -273,6 +273,8 @@ PROGRAM dbcsr_example_3
        !print *,"+++++ cannon time :", m_walltime()-t1
 
        !print *,"cannon result: nze", matrix_c_cannon % prv % nze
+       
+       !CALL dbcsr_print(matrix_c_cannon)
    
    else
 
@@ -296,14 +298,14 @@ PROGRAM dbcsr_example_3
    
    if (mynode == 0) print *,"!!!!!!!!!!!!!!!!!!!! max times: carma, cannon: ", max_times/niter
    
-   !    call dbcsr_print(matrix_c)
+       !call dbcsr_print(matrix_c)
    
    !
    ! print the matrices
    !CALL dbcsr_print(matrix_a)
    !CALL dbcsr_print(matrix_b)
    !CALL dbcsr_print(matrix_c)
-   !CALL dbcsr_print(matrix_c_cannon)
+   
 
    !
    ! release the matrices
