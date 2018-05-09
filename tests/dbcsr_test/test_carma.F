@@ -44,7 +44,7 @@ PROGRAM dbcsr_example_3
 
    use carma, only: carma_mm
    
-   
+    use dbcsr_util
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
 
    IMPLICIT NONE
@@ -275,6 +275,8 @@ PROGRAM dbcsr_example_3
        !print *,"cannon result: nze", matrix_c_cannon % prv % nze
        
        !CALL dbcsr_print(matrix_c_cannon)
+       
+       print *,"checksum cannon", dbcsr_checksum(matrix_c_cannon%prv)
    
    else
 

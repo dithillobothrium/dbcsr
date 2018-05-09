@@ -47,6 +47,8 @@ module carma
     use dbcsr_operations
     
     use dbcsr_mp_operations,  only:  dbcsr_irecv_any, dbcsr_isend_any
+    
+    use dbcsr_util
 contains
     
   !
@@ -333,6 +335,7 @@ contains
 
 !     print *, "==================== result matrix ================="
     !call dbcsr_print(loc_matr_c)
+    print *,"checksum carma", dbcsr_checksum(loc_matr_c)
     
     call mp_comm_free(row_group)
 
