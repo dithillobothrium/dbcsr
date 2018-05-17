@@ -1,4 +1,40 @@
-! -----------------------------------------------------------------------------
+
+
+MODULE hash_table
+USE kinds,                           ONLY: int_1,&
+                                              int_4,&
+                                              int_8,&
+                                              real_8,&
+                                              sp
+implicit none
+
+! *****************************************************************************
+!> \brief Types needed for the hashtable.
+! *****************************************************************************
+  TYPE ele_type
+     INTEGER :: c=0
+     INTEGER :: p=0
+  END TYPE ele_type
+
+  TYPE hash_table_type
+     TYPE(ele_type), DIMENSION(:), POINTER :: table
+     INTEGER :: nele=0
+     INTEGER :: nmax=0
+     INTEGER :: prime=0
+  END TYPE hash_table_type
+
+  
+  
+public:: matching_prime, hash_table_create, hash_table_release, hash_table_add, hash_table_get
+
+  
+  
+  
+contains
+  
+  
+  
+  ! -----------------------------------------------------------------------------
 ! Beginning of hashtable.
 ! this file can be 'INCLUDE'ed verbatim in various place, where it needs to be
 ! part of the module to guarantee inlining
@@ -159,3 +195,5 @@
 
 ! End of hashtable
 ! -----------------------------------------------------------------------------
+
+end module hash_table

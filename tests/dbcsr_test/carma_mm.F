@@ -90,7 +90,7 @@ contains
     type(dbcsr_data_obj)            :: send_nze_buffer
 
     integer                     :: tick, max_sizes(2),  requests(4),  proc_recv,  proc_send
-    integer(8)                  :: sum_nze
+    integer(8)                  :: sum_nze_nblks(2)
     real(8)                     :: alpha, beta, t1
     
     ! for summation
@@ -243,15 +243,16 @@ contains
     
     max_sizes(1) = loc_matr_c % nze
     max_sizes(2) = loc_matr_c % index(1)
-    sum_nze = loc_matr_c % nze
+    sum_nze_nblks(1) = loc_matr_c % nze
+    sum_nze_nblks(2) = loc_matr_c % nblks
 
     call mp_max(max_sizes, group)
-    call mp_sum(sum_nze, group)
+    call mp_sum(sum_nze_nblks, group)
     
     
     if (dbcsr_mp_myprow(total_mp_env) == 0) then
         print *,"-- max sizes", max_sizes
-        print *,"-- sum_beta_nze", sum_nze
+        print *,"-- sum b nze, blocks", sum_nze_nblks
     endif
     
     ! TODO , make_index=.false.
@@ -280,13 +281,14 @@ contains
     
     if (proc_send < 0) proc_send = dbcsr_mp_nprows(total_mp_env) - 1
         
-    !print *,"send proc, recv prc ",     proc_send,  proc_recv
+    print *,"send proc, recv prc ",     proc_send,  proc_recv
     
     call dbcsr_data_init(send_nze_buffer)
     call dbcsr_data_new(send_nze_buffer, loc_matr_c_send % data_type)
         
+    !call dbcsr_print(loc_matr_c)
     ! test batched add
-    call dbcsr_batched_add_anytype_begin(loc_matr_c, loc_matr_c_send,  alpha, beta, sum_nze)
+    call dbcsr_batched_add_anytype_begin(loc_matr_c, loc_matr_c_send,  alpha, beta, sum_nze_nblks(1), sum_nze_nblks(2))
 
     do tick = 1 , dbcsr_mp_nprows(total_mp_env) 
         
@@ -314,13 +316,18 @@ contains
         
         if (tick > 1) then
             
-!         print *," ^^^^^^^^^^^ tick ", tick 
-!         print *, " ##### send matrix matrix #########"
-!         call dbcsr_print(loc_matr_c_send)
+         print *," ^^^^^^^^^^^ tick ", tick 
+         print *, " ##### send matrix matrix #########"
+         !call dbcsr_print(loc_matr_c_send)
 !         print *, "#### receive matrix #####"
 !         call dbcsr_print(loc_matr_c_recv)
             
             call dbcsr_batched_add_anytype(loc_matr_c, loc_matr_c_send, beta )
+
+            
+            
+            !print *,"result matrix"
+            !call dbcsr_print(loc_matr_c)
             
         endif
     
