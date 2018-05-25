@@ -35,7 +35,7 @@ module carma
                                              mp_cart_rank,&
                                              mp_max, &
                                              mp_cart_sub, mp_waitall,  mp_irecv, mp_isend, &
-                                             mp_sum
+                                             mp_sum, mp_allgather
     USE dbcsr_data_methods                                     
     use dbcsr_work_operations
 
@@ -89,9 +89,11 @@ contains
 
     type(dbcsr_data_obj)            :: send_nze_buffer
 
-    integer                     :: tick, max_sizes(2),  requests(4),  proc_recv,  proc_send
+    integer                     :: tick, max_sizes(2),  requests(4),  proc_recv,  proc_send, num_rows
     integer(8)                  :: sum_nze_nblks(2)
     real(8)                     :: alpha, beta, t1
+    integer, dimension(:), pointer            :: index_sizes, data_sizes
+
     
     ! for summation
     alpha = 1.0
@@ -112,6 +114,10 @@ contains
         
     total_mp_env = dbcsr_distribution_mp(dist)
     group = dbcsr_mp_group(total_mp_env)
+    
+    ! for communication
+    num_rows = dbcsr_mp_nprows(total_mp_env)
+    allocate (index_sizes(num_rows), data_sizes(num_rows))
     
     ! set subgrids keeping communication only along rows, communicating different columns (2nd dimension)   
     ! we consider 1 rank per row.
@@ -220,7 +226,7 @@ contains
     loc_matr_c % valid=.true.
     
     
-    
+    !call dbcsr_finalize(loc_matr_c)
     
     !print *,"occ a ,b", dbcsr_get_occupation(loc_matr_a), dbcsr_get_occupation(loc_matr_b)
     
@@ -232,14 +238,17 @@ contains
     ! multiply local matrices
     CALL dbcsr_multiply('T', 'N', 1.0d0, loc_matr_a, loc_matr_b, 0.0d0, loc_matr_c)
    
+    !call dbcsr_finalize(loc_matr_c)
+
    CALL mp_sync(group)
    
+
    !print *,"+++++ carma dbcsr_multiply :",dbcsr_mp_myprow(total_mp_env), m_walltime()-t1
    
-!     print *,"--------- local matrix c ---------------"
+     print *,"--------- local matrix c ---------------"
 !     call dbcsr_print(loc_matr_c)
-    !print *,"index size", loc_matr_c % index(1)
-    !print *,"nze", loc_matr_c % nze
+    print *,"index size", loc_matr_c % index(1)
+    print *,"nze", loc_matr_c % nze
     
     max_sizes(1) = loc_matr_c % nze
     max_sizes(2) = loc_matr_c % index(1)
@@ -248,11 +257,18 @@ contains
 
     call mp_max(max_sizes, group)
     call mp_sum(sum_nze_nblks, group)
-    
-    
+    call mp_allgather(loc_matr_c % nze, data_sizes, group)
+    call mp_allgather(loc_matr_c % index(1), index_sizes, group)
+
+
+
+    !print *,"index ",loc_matr_c % index
+
     if (dbcsr_mp_myprow(total_mp_env) == 0) then
         print *,"-- max sizes", max_sizes
         print *,"-- sum b nze, blocks", sum_nze_nblks
+            print *,"data_sizes ",data_sizes
+    print *,"index_sizes ",index_sizes
     endif
     
     ! TODO , make_index=.false.
@@ -294,24 +310,28 @@ contains
         
         if (tick > 1) then
             call mp_waitall(requests)
+            call mp_sync(group)
             call dbcsr_repoint_index(loc_matr_c_send)
             loc_matr_c_send % valid = .true.
+            !print *,"received index", loc_matr_c_send % index
         endif
         
         if (tick < dbcsr_mp_nprows(total_mp_env) ) then
             ! recv send
-            CALL dbcsr_irecv_any(loc_matr_c_recv % data_area, proc_recv, group, requests(1))
+            CALL dbcsr_irecv_any(loc_matr_c_recv % data_area, proc_recv, group, requests(1),0)
             
-            CALL mp_irecv(loc_matr_c_recv % index, proc_recv, group, requests(2))
+            CALL mp_irecv(loc_matr_c_recv % index, proc_recv, group, requests(2),1)
             
+
+
             CALL dbcsr_data_set_pointer(area = send_nze_buffer, &
                                         rsize = loc_matr_c_send % nze, &
                                         csize = 1, &
                                         pointee = loc_matr_c_send % data_area)
                         
-            CALL dbcsr_isend_any(send_nze_buffer, proc_send, group, requests(3))
+            CALL dbcsr_isend_any(send_nze_buffer, proc_send, group, requests(3),0)
             
-            CALL mp_isend(loc_matr_c_send % index(1:loc_matr_c_send % index(1)), proc_send, group, requests(4))
+            CALL mp_isend(loc_matr_c_send % index(1:loc_matr_c_send % index(1)), proc_send, group, requests(4),1)
         endif
         
         if (tick > 1) then
