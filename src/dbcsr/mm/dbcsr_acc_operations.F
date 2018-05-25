@@ -14,13 +14,18 @@
 !> - 2014-04, Ole Schuett: generalized into acc-framework
 ! **************************************************************************************************
 MODULE dbcsr_acc_operations
-   USE ISO_C_BINDING,                   ONLY: C_INT,&
-                                              C_PTR
-   USE acc_devmem,                      ONLY: acc_devmem_cptr,&
-                                              acc_devmem_type
-   USE acc_stream,                      ONLY: acc_stream_cptr,&
-                                              acc_stream_type
-   USE dbcsr_mm_types,                  ONLY: dbcsr_ps_width
+   USE ISO_C_BINDING, ONLY: C_INT, &
+      C_PTR
+   USE acc_devmem, ONLY: acc_devmem_cptr, &
+      acc_devmem_type
+   USE acc_stream, ONLY: acc_stream_cptr, &
+      acc_stream_type
+#if defined(__ACC_CUBLAS)
+   USE cublas, ONLY: acc_dgemm_cu
+#endif
+   USE dbcsr_mm_types, ONLY: dbcsr_ps_width
+   USE dbcsr_types, ONLY: dbcsr_type_real_8
+   USE kinds, ONLY: dp
 #include "../../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -72,7 +77,8 @@ CONTAINS
 
 ! **************************************************************************************************
 !> \brief Launch an accelerated kernel for processing a stack.
-!> \param param_stack ...
+!> \param param_stack_host ...
+!> \param param_stack_dev ...
 !> \param stack_size ...
 !> \param datatype ...
 !> \param a_data ...
@@ -85,9 +91,10 @@ CONTAINS
 !> \param stream ...
 !> \param success ...
 ! **************************************************************************************************
-   SUBROUTINE dbcsr_acc_do_mm_stack(param_stack, stack_size, datatype, &
+   SUBROUTINE dbcsr_acc_do_mm_stack(param_stack_host, param_stack_dev, stack_size, datatype, &
                                     a_data, b_data, c_data, m_max, n_max, k_max, def_mnk, stream, success)
-      TYPE(acc_devmem_type), INTENT(IN)        :: param_stack
+      INTEGER, DIMENSION(:, :), POINTER        :: param_stack_host
+      TYPE(acc_devmem_type), INTENT(IN)        :: param_stack_dev
       INTEGER, INTENT(IN)                      :: stack_size
       INTEGER, INTENT(IN)                      :: datatype
       TYPE(acc_devmem_type), INTENT(IN)        :: a_data, b_data
@@ -99,7 +106,8 @@ CONTAINS
       LOGICAL, INTENT(INOUT)                   :: success
 
 #if ! defined (__DBCSR_ACC)
-      MARK_USED(param_stack)
+      MARK_USED(param_stack_host)
+      MARK_USED(param_stack_dev)
       MARK_USED(stack_size)
       MARK_USED(datatype)
       MARK_USED(a_data)
@@ -125,7 +133,7 @@ CONTAINS
       mnk = 0
       IF (def_mnk) mnk = 1
 
-      istat = libsmm_acc_process_cu(acc_devmem_cptr(param_stack), &
+      istat = libsmm_acc_process_cu(acc_devmem_cptr(param_stack_dev), &
                                     INT(stack_size, KIND=C_INT), &
                                     INT(dbcsr_ps_width, KIND=C_INT), &
                                     INT(datatype, KIND=C_INT), &
@@ -138,6 +146,28 @@ CONTAINS
                                     mnk, acc_stream_cptr(stream))
 
       IF (istat == 100) CPABORT("failed due to accGetLastError().")
+
+#if defined(__ACC_CUBLAS)
+      ! Use cuBLAS when the kernel was not found and the stack_size is 1.
+      ! This is the case when the matrices are densified
+      ! istat == -2 implies B block is transposed, only supported when the block is square
+      IF (mnk .EQ. 1 .AND. stack_size .EQ. 1 .AND. &
+          datatype .EQ. dbcsr_type_real_8 .AND. &
+          ((istat .EQ. -2 .AND. n_max .EQ. k_max) .OR. istat .EQ. -3)) THEN
+         istat = acc_dgemm_cu(INT(m_max, KIND=C_INT), &
+                              INT(n_max, KIND=C_INT), &
+                              INT(k_max, KIND=C_INT), &
+                              0, (istat+3), &
+                              acc_devmem_cptr(a_data), &
+                              INT(param_stack_host(1, 1)-1, KIND=C_INT), &
+                              acc_devmem_cptr(b_data), &
+                              INT(param_stack_host(2, 1)-1, KIND=C_INT), &
+                              acc_devmem_cptr(c_data), &
+                              INT(param_stack_host(3, 1)-1, KIND=C_INT), &
+                              1.0_dp, 1.0_dp, &
+                              acc_stream_cptr(stream))
+      ENDIF
+#endif
 
       success = (istat == 0) ! false if no suitable kernel was found
 

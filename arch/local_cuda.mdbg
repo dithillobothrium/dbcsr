@@ -1,18 +1,18 @@
 NVCC     = nvcc
-NVFLAGS  = $(DFLAGS) -g -arch sm_35 -w
+NVFLAGS  = $(DFLAGS) -g -O0 -arch sm_35 -w
 CC         = gcc
 CPP        =
 FC         = mpif90
 LD         = mpif90
 AR         = ar -r
 CPPFLAGS   =
-DFLAGS     = -D__parallel -D__SCALAPACK -D__ACC -D__DBCSR_ACC
-CFLAGS     = $(DFLAGS) -O2
+DFLAGS     = -D__parallel -D__SCALAPACK -D__ACC -D__DBCSR_ACC -D__ACC_CUBLAS
+CFLAGS     = $(DFLAGS) -O0
 FCDEBFLAGS = -ffree-form -std=f2008ts -fimplicit-none
-FCFLAGS    = $(DFLAGS) -g -fno-omit-frame-pointer -O3 \
+FCFLAGS    = $(DFLAGS) -g -fno-omit-frame-pointer -O0 \
 	     -funroll-loops -ffast-math  $(FCDEBFLAGS) \
 	     $(DFLAGS)
 LDFLAGS    = $(FCFLAGS)
-LIBS      += -L${SCALAPACK_PATH}/lib -lscalapack -llapack -lblas -lstdc++ -lcudart -lcublas -lrt -lmpi -lmpicxx 
+LIBS      += -L${SCALAPACK_PATH}/lib -lscalapack -llapack -lblas -lstdc++ -lcudart -lcublas -lrt -lmpi -lmpicxx -lstdc++
 
 

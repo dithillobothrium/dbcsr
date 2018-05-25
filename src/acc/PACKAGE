@@ -1,4 +1,4 @@
 {
 "description": "Generic Accelerator API",
-"requires": ["../base", "cuda", "opencl", "mic"]
+"requires": ["../base", "cuda", "opencl", "mic", "cublaswrap"]
 }
