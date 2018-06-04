@@ -14,15 +14,16 @@
 !> - 2014-04, Ole Schuett: generalized into acc-framework
 ! **************************************************************************************************
 MODULE dbcsr_acc_operations
-   USE ISO_C_BINDING, ONLY: C_INT, &
-      C_PTR
+   USE ISO_C_BINDING!, ONLY: C_INT, C_PTR, c_null_ptr
    USE acc_devmem, ONLY: acc_devmem_cptr, &
       acc_devmem_type
    USE acc_stream, ONLY: acc_stream_cptr, &
       acc_stream_type
+
 #if defined(__ACC_CUBLAS)
-   USE cublas, ONLY: acc_dgemm_cu
+   USE cublas
 #endif
+
    USE dbcsr_mm_types, ONLY: dbcsr_ps_width
    USE dbcsr_types, ONLY: dbcsr_type_real_8
    USE kinds, ONLY: dp
@@ -36,7 +37,11 @@ MODULE dbcsr_acc_operations
 
    LOGICAL, PARAMETER :: careful_mod = .FALSE.
 
-   PUBLIC :: dbcsr_acc_do_mm_stack, dbcsr_acc_transpose
+   PUBLIC :: dbcsr_acc_do_mm_stack, dbcsr_acc_transpose, cublas_handle_init, cublas_handle_destroy
+
+#if defined(__ACC_CUBLAS)
+   type(c_ptr), public :: cublas_handle_ptr = c_null_ptr
+#endif
 
 #if defined (__DBCSR_ACC)
    INTERFACE
@@ -75,6 +80,22 @@ MODULE dbcsr_acc_operations
 
 CONTAINS
 
+   subroutine cublas_handle_init()
+      integer(c_int)                                :: cublas_err
+#if defined(__ACC_CUBLAS)
+         cublas_err = cublasCreate(cublas_handle_ptr)
+         if (cublas_err /= 0) &
+             CPABORT("cublas cannot be created")
+#endif
+   end subroutine
+   
+   subroutine cublas_handle_destroy()
+#if defined(__ACC_CUBLAS)
+         call cublasDestroy(cublas_handle_ptr)
+#endif
+   end subroutine
+
+
 ! **************************************************************************************************
 !> \brief Launch an accelerated kernel for processing a stack.
 !> \param param_stack_host ...
@@ -105,6 +126,9 @@ CONTAINS
       TYPE(acc_stream_type), INTENT(IN)        :: stream
       LOGICAL, INTENT(INOUT)                   :: success
 
+      real(8)       :: alpha,beta
+
+      
 #if ! defined (__DBCSR_ACC)
       MARK_USED(param_stack_host)
       MARK_USED(param_stack_dev)
@@ -151,26 +175,34 @@ CONTAINS
       ! Use cuBLAS when the kernel was not found and the stack_size is 1.
       ! This is the case when the matrices are densified
       ! istat == -2 implies B block is transposed, only supported when the block is square
+!      print *,"cublas is compiled"
+!      print *,"mnk",mnk,"stack_size",stack_size,"datatype",datatype,"istat",istat,"n_max",n_max,"k_max",k_max
+
+      alpha = 1.0_dp
+      beta  = 1.0_dp
+      
       IF (mnk .EQ. 1 .AND. stack_size .EQ. 1 .AND. &
           datatype .EQ. dbcsr_type_real_8 .AND. &
-          ((istat .EQ. -2 .AND. n_max .EQ. k_max) .OR. istat .EQ. -3)) THEN
-         istat = acc_dgemm_cu(INT(m_max, KIND=C_INT), &
+          (istat .EQ. -2 .OR. istat .EQ. -3)) THEN
+         istat = acc_dgemm_cu(cublas_handle_ptr, &
+                              INT(m_max, KIND=C_INT), &
                               INT(n_max, KIND=C_INT), &
                               INT(k_max, KIND=C_INT), &
-                              0, (istat+3), &
+                              0, 0, &
                               acc_devmem_cptr(a_data), &
                               INT(param_stack_host(1, 1)-1, KIND=C_INT), &
                               acc_devmem_cptr(b_data), &
                               INT(param_stack_host(2, 1)-1, KIND=C_INT), &
                               acc_devmem_cptr(c_data), &
                               INT(param_stack_host(3, 1)-1, KIND=C_INT), &
-                              1.0_dp, 1.0_dp, &
+                              alpha, beta, &
                               acc_stream_cptr(stream))
       ENDIF
 #endif
 
       success = (istat == 0) ! false if no suitable kernel was found
 
+     
       IF (careful_mod) CALL timestop(error_handle)
 #endif
    END SUBROUTINE dbcsr_acc_do_mm_stack

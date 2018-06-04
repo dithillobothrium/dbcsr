@@ -67,6 +67,7 @@ MODULE dbcsr_mm_accdrv
                                               int_4,&
                                               int_4_size,&
                                               int_8
+
 #include "../../base/base_uses.f90"
 
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
@@ -78,6 +79,7 @@ MODULE dbcsr_mm_accdrv
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'dbcsr_mm_accdrv'
 
    LOGICAL, PARAMETER, PRIVATE :: careful_mod = .FALSE.
+
 
 ! **************************************************************************************************
    TYPE dbcsr_mm_accdrv_type
@@ -125,6 +127,7 @@ MODULE dbcsr_mm_accdrv
    INTEGER, SAVE                                          :: barrier_counter = 0
 
 CONTAINS
+
 
 ! **************************************************************************************************
 !> \brief Initialize the library

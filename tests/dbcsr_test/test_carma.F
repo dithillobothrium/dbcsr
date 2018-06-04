@@ -255,6 +255,8 @@ PROGRAM dbcsr_example_3
 
    !
 
+   print *,"checksum matrix_a matrix_b", dbcsr_checksum(matrix_a%prv), dbcsr_checksum(matrix_b%prv)
+    
    max_times(:) = 0
    if (run_order == 0) then
        

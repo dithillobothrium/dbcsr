@@ -604,6 +604,7 @@ CONTAINS
          t2 = m_walltime()
          times(mynode, irep) = t2-t1
          flops(mynode, irep) = flop
+         print *,"checksum b", dbcsr_checksum(m_b)
       ENDDO
 
       chksum_c_out = dbcsr_checksum(m_c)

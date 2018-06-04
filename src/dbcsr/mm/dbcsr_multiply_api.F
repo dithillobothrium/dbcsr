@@ -22,6 +22,7 @@ MODULE dbcsr_multiply_api
                                               real_4,&
                                               real_8
 
+   use dbcsr_acc_operations, only: cublas_handle_init, cublas_handle_destroy
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
 
 #include "../../base/base_uses.f90"
@@ -34,6 +35,7 @@ MODULE dbcsr_multiply_api
    PUBLIC :: dbcsr_multiply
    PUBLIC :: dbcsr_multiply_clear_mempools
    PUBLIC :: dbcsr_multiply_lib_finalize, dbcsr_multiply_lib_init
+   public :: cublas_handle_init, cublas_handle_destroy
 
    INTERFACE dbcsr_multiply
       MODULE PROCEDURE dbcsr_multiply_generic

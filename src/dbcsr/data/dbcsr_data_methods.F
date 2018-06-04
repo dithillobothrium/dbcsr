@@ -94,6 +94,7 @@ CONTAINS
       REAL(KIND=real_8), DIMENSION(:), POINTER           :: r_dp
 
       IF (.NOT. acc_devmem_allocated(area%d%acc_devmem)) RETURN !nothing to do
+      
       IF (area%d%ref_size == 0) RETURN !nothing to do
 
       SELECT CASE (area%d%data_type)
@@ -213,6 +214,7 @@ CONTAINS
          area = dbcsr_mempool_get(my_memory_type, data_type, total_size_requested)
       ENDIF
 
+      
       IF (.NOT. ASSOCIATED(area%d)) THEN
          ALLOCATE (area%d)
 !$OMP        CRITICAL (crit_area_id)
@@ -222,13 +224,13 @@ CONTAINS
          area%d%refcount = 1
          area%d%memory_type = my_memory_type
          area%d%data_type = data_type
-         area%d%ref_size = 0
          IF (PRESENT(data_size)) THEN
-            area%d%ref_size = total_size_oversized
             CALL internal_data_allocate(area%d, sizes_oversized(1:d))
          END IF
+
       ENDIF
 
+      area%d%ref_size = total_size_requested
       CALL timestop(handle)
    END SUBROUTINE dbcsr_data_new
 

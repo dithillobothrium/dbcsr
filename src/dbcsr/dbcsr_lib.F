@@ -12,11 +12,14 @@
 MODULE dbcsr_lib
    USE dbcsr_multiply_api,              ONLY: dbcsr_multiply_clear_mempools,&
                                               dbcsr_multiply_lib_finalize,&
-                                              dbcsr_multiply_lib_init
+                                              dbcsr_multiply_lib_init, &
+                                              cublas_handle_init, cublas_handle_destroy
    USE kinds,                           ONLY: int_1_size,&
                                               int_2_size,&
                                               int_4_size,&
                                               int_8_size
+
+
 #include "../base/base_uses.f90"
 
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
@@ -30,6 +33,7 @@ MODULE dbcsr_lib
 
    LOGICAL, PRIVATE, SAVE :: is_initialized = .FALSE.
 
+
 CONTAINS
 
 ! **************************************************************************************************
@@ -38,11 +42,10 @@ CONTAINS
 !> Prepares the DBCSR library for use.
 ! **************************************************************************************************
    SUBROUTINE dbcsr_init_lib()
-
+      use iso_c_binding
       CHARACTER(len=*), PARAMETER :: routineN = 'dbcsr_init_lib', routineP = moduleN//':'//routineN
 
       INTEGER                                            :: error_handle
-
 !n_stack_buffers,mem_type, n_stack_mem_regions, stack_size, nstacks,&
 !INTEGER, DIMENSION(3)                    :: nxstacks
 !   ---------------------------------------------------------------------------
@@ -63,7 +66,10 @@ CONTAINS
 !$OMP     PARALLEL DEFAULT(NONE)
       CALL dbcsr_multiply_lib_init()
 !$OMP     END PARALLEL
-
+    
+      ! init cublas. Internal check for cublas existing
+      call cublas_handle_init()
+       
       is_initialized = .TRUE.
       CALL timestop(error_handle)
    END SUBROUTINE dbcsr_init_lib
@@ -101,6 +107,8 @@ CONTAINS
 !$OMP     END PARALLEL
       IF (output_unit > 0) WRITE (UNIT=output_unit, FMT="(T2,A)") REPEAT("-", 79)
 
+      call cublas_handle_destroy()
+       
       is_initialized = .FALSE.
       CALL timestop(error_handle)
    END SUBROUTINE dbcsr_finalize_lib
