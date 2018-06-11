@@ -181,20 +181,14 @@ CONTAINS
       alpha = 1.0_dp
       beta  = 1.0_dp
       
-      IF (mnk .EQ. 1 .AND. stack_size .EQ. 1 .AND. &
-          datatype .EQ. dbcsr_type_real_8 .AND. &
+      IF (datatype .EQ. dbcsr_type_real_8 .AND. &
           (istat .EQ. -2 .OR. istat .EQ. -3)) THEN
          istat = acc_dgemm_cu(cublas_handle_ptr, &
-                              INT(m_max, KIND=C_INT), &
-                              INT(n_max, KIND=C_INT), &
-                              INT(k_max, KIND=C_INT), &
+                              c_loc(param_stack_host), stack_size, mnk, &
                               0, 0, &
                               acc_devmem_cptr(a_data), &
-                              INT(param_stack_host(1, 1)-1, KIND=C_INT), &
                               acc_devmem_cptr(b_data), &
-                              INT(param_stack_host(2, 1)-1, KIND=C_INT), &
                               acc_devmem_cptr(c_data), &
-                              INT(param_stack_host(3, 1)-1, KIND=C_INT), &
                               alpha, beta, &
                               acc_stream_cptr(stream))
       ENDIF

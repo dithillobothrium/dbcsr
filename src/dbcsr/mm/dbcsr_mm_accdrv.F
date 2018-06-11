@@ -557,7 +557,7 @@ CONTAINS
       TYPE(dbcsr_type), INTENT(IN)                       :: left, right
       INTEGER, INTENT(IN)                                :: stack_size
       INTEGER, DIMENSION(dbcsr_ps_width, stack_size), &
-         INTENT(INOUT)                                   :: params
+         INTENT(INOUT), target                           :: params
       TYPE(stack_descriptor_type), INTENT(IN)            :: stack_descr
       LOGICAL, INTENT(OUT)                               :: success
 
@@ -572,6 +572,8 @@ CONTAINS
       TYPE(stack_buffer_type), DIMENSION(:), POINTER     :: stack_buffers
       TYPE(stack_buffer_type), POINTER                   :: stackbuf
 
+      integer, dimension(:, :), pointer                  :: ptr_params
+      
       NULLIFY (stackbuf, stackbuf_hostmem_cropped, stack_buffers)
 
       ithread = 0
@@ -642,7 +644,8 @@ CONTAINS
 
       CALL acc_stream_wait_event(stackbuf%stream, stackbuf%ready)
 
-      CALL dbcsr_acc_do_mm_stack(stackbuf%hostmem, stackbuf%devmem, &
+      ptr_params => params
+      CALL dbcsr_acc_do_mm_stack(ptr_params, stackbuf%devmem, &
                                  stack_size, c_area%data_type, &
                                  a_data=a_area%acc_devmem, &
                                  b_data=b_area%acc_devmem, &

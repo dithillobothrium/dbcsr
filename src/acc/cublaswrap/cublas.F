@@ -12,13 +12,14 @@ MODULE cublas
    INTERFACE
 
 #if defined(__ACC_CUBLAS)
-      FUNCTION acc_dgemm_cu(handle_ptr, m, n, k, transa, transb, a_data, a_lb, b_data, b_lb, c_data, c_lb, &
-                            alpha, beta, stream_ptr) &
+      FUNCTION acc_dgemm_cu(handle_ptr, stack_params, stack_size, mnk, transa, transb,&
+                            a_data, b_data, c_data, alpha, beta, stream_ptr) &
          RESULT(istat) &
          BIND(C, name="acc_dgemm")
          IMPORT
          type(C_PTR),intent(in),value             :: handle_ptr
-         INTEGER(KIND=C_INT), INTENT(IN), VALUE   :: m, n, k, a_lb, b_lb, c_lb, transa, transb
+         TYPE(C_PTR), intent(in), value           :: stack_params
+         INTEGER(KIND=C_INT), INTENT(IN), VALUE   :: stack_size, mnk, transa, transb
          TYPE(C_PTR), INTENT(IN), VALUE           :: a_data, b_data, c_data
          REAL(KIND=C_DOUBLE), intent(in),value    :: alpha, beta
          TYPE(C_PTR), intent(in), VALUE           :: stream_ptr
