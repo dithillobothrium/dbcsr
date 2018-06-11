@@ -43,7 +43,7 @@ extern "C" int acc_dgemm(cublasHandle_t *handle, void *stack_params, int stack_s
     
       
   
-    printf("in C-cublas");
+    //printf("in C-cublas");
  
  
     cublasSetStream(*handle, *custream);  
@@ -94,7 +94,7 @@ extern "C" int acc_dgemm(cublasHandle_t *handle, void *stack_params, int stack_s
 
         check_transposity(transa, transb, m, n, k, trana, tranb, lda, ldb);
        
-        printf("batched");
+        //printf("batched");
 
         cublasStatus_t stat = cublasDgemmBatched(*handle, trana, tranb, m, n, k, &alpha, (const double**)thrust::raw_pointer_cast(a_ptrs.data()), lda, 
                                                  (const double**)thrust::raw_pointer_cast(b_ptrs.data()), ldb, &beta, (double**)thrust::raw_pointer_cast(c_ptrs.data()), m, stack_size);
